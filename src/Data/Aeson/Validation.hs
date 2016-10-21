@@ -1,5 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 
+-- | JSON schema validation.
+
 module Data.Aeson.Validation
   ( -- * Schema validation
     Schema
@@ -35,7 +37,6 @@ module Data.Aeson.Validation
     -- * Miscellaneous schemas
   , anything
   , nullable
-  , inverse
   ) where
 
 import Data.Aeson            (Value(..))
@@ -68,10 +69,6 @@ data Field
   | OptField !Text Schema
 
 -- | An opaque JSON 'Schema'.
---
--- The '<>' operator is used to create a /sum/ 'Schema' that, when applied to a
--- 'Value', first tries the left 'Schema', then falls back on the right one if
--- the left one fails.
 data Schema
   = SBool
   | STrue
@@ -86,11 +83,69 @@ data Schema
   | SAlt Schema Schema
   | SInverse Schema
 
--- | 'schema' (s1 '<>' s2) val = 'schema' s1 val '||' 'schema' s2 val
+-- | The '<>' operator is used to create a /sum/ 'Schema' that, when applied to
+-- a 'Value', first tries the left 'Schema', then falls back on the right one if
+-- the left one fails.
+--
+-- @
+-- 'schema' (s1 '<>' s2) val = 'schema' s1 val '||' 'schema' s2 val
+-- @
+--
+-- >>> schema (bool <> string) (Bool True)
+-- True
+--
+-- >>> schema (bool <> string) (String "foo")
+-- True
+--
+-- >>> schema (bool <> string) (Number 1)
+-- False
 instance Semigroup Schema where
   (<>) = SAlt
 
--- | 'fromString' = 'theString' . 'Data.Text.pack'
+-- | The 'Num' instance only defines two functions; all other 'Num' functions
+-- call 'error'.
+--
+--     (1) 'fromInteger' is provided for integer-literal syntax.
+--
+--         @
+--         'fromInteger' n = 'someInteger' ('==' n)
+--         @
+--
+--         >>> schema 1 (Number 1)
+--         True
+--
+--     (2) @'negate' s@ succeeds whenever @s@ fails.
+--
+--         'negate' is its own inverse:
+--
+--         @
+--         'negate' . 'negate' = 'id'
+--         @
+--
+--         >>> schema (negate bool) (Bool True)
+--         False
+--
+--         >>> schema (negate bool) (String "foo")
+--         True
+--
+instance Num Schema where
+  (+)    = error "Data.Aeson.Validation: (+) not implemented for Schema"
+  (-)    = error "Data.Aeson.Validation: (-) not implemented for Schema"
+  (*)    = error "Data.Aeson.Validation: (*) not implemented for Schema"
+  abs    = error "Data.Aeson.Validation: abs not implemented for Schema"
+  signum = error "Data.Aeson.Validation: signum not implemented for Schema"
+
+  fromInteger n = someInteger (== n)
+  negate = SInverse
+
+-- | 'fromString' is provided for string-literal syntax.
+--
+-- @
+-- 'fromString' = 'theString' . 'Data.Text.pack'
+-- @
+--
+-- >>> schema "foo" (String "foo")
+-- True
 instance IsString Schema where
   fromString = theString . fromString
 
@@ -341,7 +396,7 @@ anything = SAnything
 -- 'nullable' is idempotent:
 --
 -- @
--- 'nullable' a = 'nullable' ('nullable' a)
+-- 'nullable' = 'nullable' . 'nullable'
 -- @
 --
 -- ==== __Examples__
@@ -353,22 +408,6 @@ anything = SAnything
 -- True
 nullable :: Schema -> Schema
 nullable = SNullable
-
--- | Succeed whenever the given 'Schema' fails, and vice versa.
---
--- @
--- 'inverse' '.' 'inverse' = 'id'
--- @
---
--- ==== __Examples__
---
--- >>> schema (inverse bool) (Bool True)
--- False
---
--- >>> schema (inverse bool) (String "foo")
--- True
-inverse :: Schema -> Schema
-inverse = SInverse
 
 -- | Does the 'Value' satisfy the 'Schema'?
 schema :: Schema -> Value -> Bool
