@@ -20,6 +20,7 @@ module Data.Aeson.Validation
   , string
   , theString
   , someString
+  , regex
     -- * Object schemas
   , object
   , object'
@@ -38,19 +39,23 @@ module Data.Aeson.Validation
   , anything
   ) where
 
-import Data.Aeson          (Value)
-import Data.HashMap.Strict (HashMap)
-import Data.HashSet        (HashSet)
+import Data.Aeson            (Value)
+import Data.HashMap.Strict   (HashMap)
+import Data.HashSet          (HashSet)
 import Data.Scientific
 import Data.Semigroup
-import Data.Text           (Text)
-import Data.Vector         (Vector)
-import GHC.Exts            (IsList(..))
+import Data.Text             (Text)
+import Data.Text.Encoding    (encodeUtf8)
+import Data.Vector           (Vector)
+import GHC.Exts              (IsList(..))
+import Lens.Micro            hiding (set)
+import Text.Regex.PCRE.Light (Regex)
 
-import qualified Data.Aeson          as A
-import qualified Data.HashMap.Strict as HashMap
-import qualified Data.HashSet        as HashSet
-import qualified Data.Vector         as Vector
+import qualified Data.Aeson            as A
+import qualified Data.HashMap.Strict   as HashMap
+import qualified Data.HashSet          as HashSet
+import qualified Data.Vector           as Vector
+import qualified Text.Regex.PCRE.Light as Regex
 
 data Field
   = ReqField !Text Schema
@@ -120,6 +125,13 @@ theString s = String (== s)
 -- | Some 'A.String'.
 someString :: (Text -> Bool) -> Schema
 someString = String
+
+regex :: Text -> Schema
+regex r = String (\s -> has (_Just . _head) (Regex.match r' (encodeUtf8 s) []))
+ where
+  r' :: Regex
+  r' = Regex.compile (encodeUtf8 r) [Regex.utf8]
+
 
 -- | An 'A.Object', possibly with additional unvalidated fields.
 --

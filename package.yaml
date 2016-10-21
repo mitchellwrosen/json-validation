@@ -10,6 +10,8 @@ library:
   source-dirs: src
   dependencies:
     - aeson
+    - microlens
+    - pcre-light
     - scientific
     - text
     - unordered-containers
