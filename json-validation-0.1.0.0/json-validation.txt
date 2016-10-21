@@ -168,8 +168,8 @@ regex :: Text -> Schema
 
 -- | An opaque object <a>Field</a>.
 --   
---   Create a <a>Field</a> with <a>.:</a> or <a>.:?</a>, and bundled into a
---   <a>Schema</a> using <a>object</a> or <a>object'</a>
+--   Create a <a>Field</a> with <a>.:</a> or <a>.:?</a>, and bundle it into
+--   a <a>Schema</a> using <a>object</a> or <a>object'</a>
 data Field
 
 -- | An <a>Object</a>, possibly with additional unvalidated fields.
