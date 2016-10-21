@@ -46,7 +46,7 @@ import Data.Semigroup
 import Data.Text             (Text)
 import Data.Text.Encoding    (encodeUtf8)
 import Data.Vector           (Vector)
-import GHC.Exts              (IsList(..))
+import GHC.Exts              (IsList(..), IsString(..))
 import Lens.Micro            hiding (set)
 import Text.Regex.PCRE.Light (Regex)
 
@@ -86,8 +86,13 @@ data Schema
   | SAlt Schema Schema
   | SInverse Schema
 
+-- | 'schema' (s1 '<>' s2) val = 'schema' s1 val '||' 'schema' s2 val
 instance Semigroup Schema where
   (<>) = SAlt
+
+-- | 'fromString' = 'theString' . 'Data.Text.pack'
+instance IsString Schema where
+  fromString = theString . fromString
 
 -- | Are extra properties of an object allowed?
 data Strict
@@ -189,7 +194,8 @@ someInteger p = SNumber (either nope p . floatingOrInteger)
 string :: Schema
 string = SString (const True)
 
--- | An exact 'Data.Aeson.Types.String'.
+-- | An exact 'Data.Aeson.Types.String'. This is what the @OverloadedStrings@
+-- instance uses when making a 'Schema' from a string literal.
 --
 -- ==== __Examples__
 --
