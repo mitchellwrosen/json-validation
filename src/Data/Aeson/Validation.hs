@@ -62,7 +62,7 @@ import qualified Text.Regex.PCRE.Light as Regex
 
 -- | An opaque object 'Field'.
 --
--- Create a 'Field' with '.:' or '.:?', and bundled into a 'Schema' using
+-- Create a 'Field' with '.:' or '.:?', and bundle it into a 'Schema' using
 -- 'object' or 'object''
 data Field
   = ReqField !Text Schema
