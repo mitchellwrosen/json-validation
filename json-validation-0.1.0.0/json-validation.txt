@@ -5,30 +5,27 @@
 @package json-validation
 @version 0.1.0.0
 
+
+-- | JSON schema validation.
 module Data.Aeson.Validation
 
 -- | An opaque JSON <a>Schema</a>.
---   
---   The <a>&lt;&gt;</a> operator is used to create a <i>sum</i>
---   <a>Schema</a> that, when applied to a <a>Value</a>, first tries the
---   left <a>Schema</a>, then falls back on the right one if the left one
---   fails.
 data Schema
 
 -- | Does the <a>Value</a> satisfy the <a>Schema</a>?
-satisfies :: Schema -> Value -> Bool
+schema :: Schema -> Value -> Bool
 
 -- | Any <a>Bool</a>.
 --   
 --   <h4><b>Examples</b></h4>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies bool (Bool True)
+--   &gt;&gt;&gt; schema bool (Bool True)
 --   True
 --   </pre>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies bool (Bool False)
+--   &gt;&gt;&gt; schema bool (Bool False)
 --   True
 --   </pre>
 bool :: Schema
@@ -38,12 +35,12 @@ bool :: Schema
 --   <h4><b>Examples</b></h4>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies true (Bool True)
+--   &gt;&gt;&gt; schema true (Bool True)
 --   True
 --   </pre>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies true (Bool False)
+--   &gt;&gt;&gt; schema true (Bool False)
 --   False
 --   </pre>
 true :: Schema
@@ -53,12 +50,12 @@ true :: Schema
 --   <h4><b>Examples</b></h4>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies false (Bool True)
+--   &gt;&gt;&gt; schema false (Bool True)
 --   False
 --   </pre>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies false (Bool False)
+--   &gt;&gt;&gt; schema false (Bool False)
 --   True
 --   </pre>
 false :: Schema
@@ -68,7 +65,7 @@ false :: Schema
 --   <h4><b>Examples</b></h4>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies number (Number 1.0)
+--   &gt;&gt;&gt; schema number (Number 1.0)
 --   True
 --   </pre>
 number :: Schema
@@ -78,12 +75,12 @@ number :: Schema
 --   <h4><b>Examples</b></h4>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies integer (Number 1.0)
+--   &gt;&gt;&gt; schema integer (Number 1.0)
 --   True
 --   </pre>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies integer (Number 1.5)
+--   &gt;&gt;&gt; schema integer (Number 1.5)
 --   False
 --   </pre>
 integer :: Schema
@@ -93,7 +90,7 @@ integer :: Schema
 --   <h4><b>Examples</b></h4>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies (someNumber (&gt; 5)) (Number 6)
+--   &gt;&gt;&gt; schema (someNumber (&gt; 5)) (Number 6)
 --   True
 --   </pre>
 someNumber :: (Scientific -> Bool) -> Schema
@@ -103,12 +100,12 @@ someNumber :: (Scientific -> Bool) -> Schema
 --   <h4><b>Examples</b></h4>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies (someInteger (&gt; 5)) (Number 6.0)
+--   &gt;&gt;&gt; schema (someInteger (&gt; 5)) (Number 6.0)
 --   True
 --   </pre>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies (someInteger (&gt; 5)) (Number 6.5)
+--   &gt;&gt;&gt; schema (someInteger (&gt; 5)) (Number 6.5)
 --   False
 --   </pre>
 someInteger :: (Integer -> Bool) -> Schema
@@ -118,22 +115,23 @@ someInteger :: (Integer -> Bool) -> Schema
 --   <h4><b>Examples</b></h4>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies string (String "foo")
+--   &gt;&gt;&gt; schema string (String "foo")
 --   True
 --   </pre>
 string :: Schema
 
--- | An exact <a>String</a>.
+-- | An exact <a>String</a>. This is what the <tt>OverloadedStrings</tt>
+--   instance uses when making a <a>Schema</a> from a string literal.
 --   
 --   <h4><b>Examples</b></h4>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies (theString "foo") (String "foo")
+--   &gt;&gt;&gt; schema (theString "foo") (String "foo")
 --   True
 --   </pre>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies (theString "foo") (String "bar")
+--   &gt;&gt;&gt; schema (theString "foo") (String "bar")
 --   False
 --   </pre>
 theString :: Text -> Schema
@@ -143,12 +141,12 @@ theString :: Text -> Schema
 --   <h4><b>Examples</b></h4>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies (someString (\s -&gt; Text.length s &gt; 5)) (String "foobar")
+--   &gt;&gt;&gt; schema (someString (\s -&gt; Text.length s &gt; 5)) (String "foobar")
 --   True
 --   </pre>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies (someString (\s -&gt; Text.length s &gt; 5)) (String "foo")
+--   &gt;&gt;&gt; schema (someString (\s -&gt; Text.length s &gt; 5)) (String "foo")
 --   False
 --   </pre>
 someString :: (Text -> Bool) -> Schema
@@ -158,12 +156,12 @@ someString :: (Text -> Bool) -> Schema
 --   <h4><b>Examples</b></h4>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies (regex "a+b") (String "xaaabx")
+--   &gt;&gt;&gt; schema (regex "a+b") (String "xaaabx")
 --   True
 --   </pre>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies (regex "c{2}") (String "cd")
+--   &gt;&gt;&gt; schema (regex "c{2}") (String "cd")
 --   False
 --   </pre>
 regex :: Text -> Schema
@@ -204,17 +202,17 @@ infixr 5 .:?
 --   <h4><b>Examples</b></h4>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies (array bool) (Array [Bool True, Bool False])
+--   &gt;&gt;&gt; schema (array bool) (Array [Bool True, Bool False])
 --   True
 --   </pre>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies (array anything) (Array [Bool True, String "foo"])
+--   &gt;&gt;&gt; schema (array anything) (Array [Bool True, String "foo"])
 --   True
 --   </pre>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies (array integer) (Array [Number 1.5])
+--   &gt;&gt;&gt; schema (array integer) (Array [Number 1.5])
 --   False
 --   </pre>
 array :: Schema -> Schema
@@ -225,12 +223,12 @@ array :: Schema -> Schema
 --   <h4><b>Examples</b></h4>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies (sizedArray 1 2 bool) (Array [Bool True])
+--   &gt;&gt;&gt; schema (sizedArray 1 2 bool) (Array [Bool True])
 --   True
 --   </pre>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies (sizedArray 1 2 bool) (Array [Bool True, Bool True, Bool False])
+--   &gt;&gt;&gt; schema (sizedArray 1 2 bool) (Array [Bool True, Bool True, Bool False])
 --   False
 --   </pre>
 sizedArray :: Int -> Int -> Schema -> Schema
@@ -240,12 +238,12 @@ sizedArray :: Int -> Int -> Schema -> Schema
 --   <h4><b>Examples</b></h4>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies (set bool) (Array [Bool True])
+--   &gt;&gt;&gt; schema (set bool) (Array [Bool True])
 --   True
 --   </pre>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies (set bool) (Array [Bool True, Bool True])
+--   &gt;&gt;&gt; schema (set bool) (Array [Bool True, Bool True])
 --   False
 --   </pre>
 set :: Schema -> Schema
@@ -257,12 +255,12 @@ set :: Schema -> Schema
 --   <h4><b>Examples</b></h4>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies (sizedSet 1 1 string) (Array [String "foo"])
+--   &gt;&gt;&gt; schema (sizedSet 1 1 string) (Array [String "foo"])
 --   True
 --   </pre>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies (sizedSet 1 1 string) (Array [String "foo", String "bar"])
+--   &gt;&gt;&gt; schema (sizedSet 1 1 string) (Array [String "foo", String "bar"])
 --   False
 --   </pre>
 sizedSet :: Int -> Int -> Schema -> Schema
@@ -273,7 +271,7 @@ sizedSet :: Int -> Int -> Schema -> Schema
 --   <h4><b>Examples</b></h4>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies (tuple [bool, string]) (Array [Bool True, String "foo"])
+--   &gt;&gt;&gt; schema (tuple [bool, string]) (Array [Bool True, String "foo"])
 --   True
 --   </pre>
 tuple :: [Schema] -> Schema
@@ -283,12 +281,12 @@ tuple :: [Schema] -> Schema
 --   <h4><b>Examples</b></h4>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies anything Null
+--   &gt;&gt;&gt; schema anything Null
 --   True
 --   </pre>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies anything (Bool True)
+--   &gt;&gt;&gt; schema anything (Bool True)
 --   True
 --   </pre>
 anything :: Schema
@@ -298,38 +296,21 @@ anything :: Schema
 --   <a>nullable</a> is idempotent:
 --   
 --   <pre>
---   <a>nullable</a> a = <a>nullable</a> (<a>nullable</a> a)
+--   <a>nullable</a> = <a>nullable</a> . <a>nullable</a>
 --   </pre>
 --   
 --   <h4><b>Examples</b></h4>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies (nullable bool) (Bool True)
+--   &gt;&gt;&gt; schema (nullable bool) (Bool True)
 --   True
 --   </pre>
 --   
 --   <pre>
---   &gt;&gt;&gt; satisfies (nullable bool) Null
+--   &gt;&gt;&gt; schema (nullable bool) Null
 --   True
 --   </pre>
 nullable :: Schema -> Schema
-
--- | Succeed whenever the given <a>Schema</a> fails, and vice versa.
---   
---   <pre>
---   <a>inverse</a> <a>.</a> <a>inverse</a> = <a>id</a>
---   </pre>
---   
---   <h4><b>Examples</b></h4>
---   
---   <pre>
---   &gt;&gt;&gt; satisfies (inverse bool) (Bool True)
---   False
---   </pre>
---   
---   <pre>
---   &gt;&gt;&gt; satisfies (inverse bool) (String "foo")
---   True
---   </pre>
-inverse :: Schema -> Schema
 instance Data.Semigroup.Semigroup Data.Aeson.Validation.Schema
+instance GHC.Num.Num Data.Aeson.Validation.Schema
+instance Data.String.IsString Data.Aeson.Validation.Schema
