@@ -1,0 +1,31 @@
+name: json-validation
+version: 0.1.0.0
+
+ghc-options: -Wall
+
+dependencies:
+  - base
+
+library:
+  source-dirs: src
+  dependencies:
+    - aeson
+    - scientific
+    - text
+    - unordered-containers
+    - vector
+
+tests:
+  doctest:
+    main: DocTest.hs
+    source-dirs: test
+    dependencies:
+      - json-validation
+      - doctest
+
+  spec:
+    main: Spec.hs
+    source-dirs: test
+    dependencies:
+      - json-validation
+      - hspec
