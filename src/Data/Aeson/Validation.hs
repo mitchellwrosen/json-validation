@@ -73,11 +73,13 @@ data Field
 -- 'Value', first tries the left 'Schema', then falls back on the right one if
 -- the left one fails.
 data Schema
-  = SBool (Bool -> Bool)
+  = SBool
+  | STrue
+  | SFalse
   | SNumber (Scientific -> Bool)
   | SString (Text -> Bool)
-  | SObject !Bool {- strict? -} [Field]
-  | SArray !Bool {- unique? -} !Int {- min len -} !Int {- max len -} Schema
+  | SObject !Strict [Field]
+  | SArray !Unique !Int {- min len -} !Int {- max len -} Schema
   | STuple [Schema]
   | SAnything
   | SNullable Schema
@@ -86,6 +88,16 @@ data Schema
 
 instance Semigroup Schema where
   (<>) = SAlt
+
+-- | Are extra properties of an object allowed?
+data Strict
+  = Strict
+  | NotStrict
+
+-- | Are duplicate elements in an array allowed?
+data Unique
+  = Unique
+  | NotUnique
 
 -- | Any 'Data.Aeson.Types.Bool'.
 --
@@ -97,7 +109,7 @@ instance Semigroup Schema where
 -- >>> satisfies bool (Bool False)
 -- True
 bool :: Schema
-bool = SBool (const True)
+bool = SBool
 
 -- | 'Data.Aeson.Types.Bool' 'True'.
 --
@@ -109,7 +121,7 @@ bool = SBool (const True)
 -- >>> satisfies true (Bool False)
 -- False
 true :: Schema
-true = SBool (== True)
+true = STrue
 
 -- | 'Data.Aeson.Types.Bool' 'False'.
 --
@@ -121,7 +133,7 @@ true = SBool (== True)
 -- >>> satisfies false (Bool False)
 -- True
 false :: Schema
-false = SBool (== False)
+false = SFalse
 
 -- | Any 'Number'.
 --
@@ -221,14 +233,14 @@ regex r = SString (\s -> has (_Just . _head) (Regex.match r' (encodeUtf8 s) []))
 --
 -- To match any 'Object', use @'object' []@.
 object :: [Field] -> Schema
-object = SObject False
+object = SObject NotStrict
 
 -- | An 'Object' with no additional fields.
 --
 -- The @'@ mark means \"strict\" as in @foldl'@, because 'object'' matches
 -- 'Object's more strictly than 'object'.
 object' :: [Field] -> Schema
-object' = SObject True
+object' = SObject Strict
 
 -- | A required 'Field'.
 (.:) :: Text -> Schema -> Field
@@ -257,7 +269,7 @@ infixr 5 .:?
 -- >>> satisfies (array integer) (Array [Number 1.5])
 -- False
 array :: Schema -> Schema
-array = SArray False minBound maxBound
+array = SArray NotUnique minBound maxBound
 
 -- | A sized (inclusive), "homogenous" (see note above) 'Array'. Use 'minBound'
 -- or 'maxBound' for an unbounded edge.
@@ -270,7 +282,7 @@ array = SArray False minBound maxBound
 -- >>> satisfies (sizedArray 1 2 bool) (Array [Bool True, Bool True, Bool False])
 -- False
 sizedArray :: Int -> Int -> Schema -> Schema
-sizedArray = SArray False
+sizedArray = SArray NotUnique
 
 -- | A "homogenous" (see note above), unique 'Array' of any size.
 --
@@ -282,7 +294,7 @@ sizedArray = SArray False
 -- >>> satisfies (set bool) (Array [Bool True, Bool True])
 -- False
 set :: Schema -> Schema
-set = SArray True minBound maxBound
+set = SArray Unique minBound maxBound
 
 -- | A sized (inclusive), "homogenous" (see note above), unique 'Array'. Use
 -- 'minBound' or 'maxBound' for an unbounded edge.
@@ -295,7 +307,7 @@ set = SArray True minBound maxBound
 -- >>> satisfies (sizedSet 1 1 string) (Array [String "foo", String "bar"])
 -- False
 sizedSet :: Int -> Int -> Schema -> Schema
-sizedSet = SArray True
+sizedSet = SArray Unique
 
 -- | A heterogeneous 'Array' exactly as long as the given list of 'Schema's.
 --
@@ -354,21 +366,23 @@ inverse = SInverse
 
 -- | Does the 'Value' satisfy the 'Schema'?
 satisfies :: Schema -> Value -> Bool
-satisfies (SBool f) (Bool x) = f x
+satisfies SBool (Bool _) = True
+satisfies STrue (Bool True) = True
+satisfies SFalse (Bool False) = True
 satisfies (SNumber f) (Number x) = f x
 satisfies (SString f) (String x) = f x
-satisfies (SObject False fs) (Object o) = satisfiesObject fs o
-satisfies (SObject True fs) (Object o) = satisfiesObject' fs o
-satisfies (SArray False x y SAnything) (Array v) =
+satisfies (SObject NotStrict fs) (Object o) = satisfiesObject fs o
+satisfies (SObject Strict fs) (Object o) = satisfiesObject' fs o
+satisfies (SArray NotUnique x y SAnything) (Array v) =
   let !len = Vector.length v
   in len >= x && len <= y
-satisfies (SArray False x y s) (Array v) =
+satisfies (SArray NotUnique x y s) (Array v) =
   let !len = Vector.length v
   in len >= x && len <= y && all (satisfies s) (toList v)
-satisfies (SArray True x y SAnything) (Array v) =
+satisfies (SArray Unique x y SAnything) (Array v) =
   let !len = Vector.length v
   in len >= x && len <= y && len == length (toSet v)
-satisfies (SArray True x y s) (Array v) =
+satisfies (SArray Unique x y s) (Array v) =
   let !len = Vector.length v
   in len >= x && len <= y && all (satisfies s) (toList v) &&
        len == length (toSet v)
