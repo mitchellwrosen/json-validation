@@ -22,12 +22,13 @@ tests:
     main: DocTest.hs
     source-dirs: test
     dependencies:
-      - json-validation
       - doctest
+      - json-validation
+      - quickcheck-instances
 
   spec:
     main: Spec.hs
     source-dirs: test
     dependencies:
-      - json-validation
       - hspec
+      - json-validation

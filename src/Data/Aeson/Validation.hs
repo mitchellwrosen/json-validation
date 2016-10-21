@@ -3,7 +3,6 @@
 module Data.Aeson.Validation
   ( -- * Schema validation
     Schema
-  , Field
   , satisfies
     -- * Boolean schemas
   , bool
@@ -12,16 +11,15 @@ module Data.Aeson.Validation
     -- * Number schemas
   , number
   , integer
-  , float
   , someNumber
   , someInteger
-  , someFloat
     -- * String schemas
   , string
   , theString
   , someString
   , regex
     -- * Object schemas
+  , Field
   , object
   , object'
   , (.:)
@@ -35,11 +33,12 @@ module Data.Aeson.Validation
     -- * Tuple schemas (heterogeneous lists)
   , tuple
     -- * Miscellaneous schemas
-  , nullable
   , anything
+  , nullable
+  , inverse
   ) where
 
-import Data.Aeson            (Value)
+import Data.Aeson            (Value(..))
 import Data.HashMap.Strict   (HashMap)
 import Data.HashSet          (HashSet)
 import Data.Scientific
@@ -51,176 +50,334 @@ import GHC.Exts              (IsList(..))
 import Lens.Micro            hiding (set)
 import Text.Regex.PCRE.Light (Regex)
 
-import qualified Data.Aeson            as A
 import qualified Data.HashMap.Strict   as HashMap
 import qualified Data.HashSet          as HashSet
 import qualified Data.Vector           as Vector
 import qualified Text.Regex.PCRE.Light as Regex
 
+-- $setup
+-- >>> import Test.QuickCheck.Instances ()
+-- >>> import qualified Data.Text as Text
+
+-- | An opaque object 'Field'.
+--
+-- Create a 'Field' with '.:' or '.:?', and bundled into a 'Schema' using
+-- 'object' or 'object''
 data Field
   = ReqField !Text Schema
   | OptField !Text Schema
 
+-- | An opaque JSON 'Schema'.
+--
+-- The '<>' operator is used to create a /sum/ 'Schema' that, when applied to a
+-- 'Value', first tries the left 'Schema', then falls back on the right one if
+-- the left one fails.
 data Schema
-  = Bool (Bool -> Bool)
-  | Number (Scientific -> Bool)
-  | String (Text -> Bool)
-  | Object !Bool {- strict? -} [Field]
-  | Array !Bool {- unique? -} !Int {- min len -} !Int {- max len -} Schema
-  | Tuple [Schema]
-  | Nullable Schema
-  | Alt Schema Schema
-  | Anything
+  = SBool (Bool -> Bool)
+  | SNumber (Scientific -> Bool)
+  | SString (Text -> Bool)
+  | SObject !Bool {- strict? -} [Field]
+  | SArray !Bool {- unique? -} !Int {- min len -} !Int {- max len -} Schema
+  | STuple [Schema]
+  | SAnything
+  | SNullable Schema
+  | SAlt Schema Schema
+  | SInverse Schema
 
 instance Semigroup Schema where
-  (<>) = Alt
+  (<>) = SAlt
 
--- | Any 'A.Bool'.
+-- | Any 'Data.Aeson.Types.Bool'.
+--
+-- ==== __Examples__
+--
+-- >>> satisfies bool (Bool True)
+-- True
+--
+-- >>> satisfies bool (Bool False)
+-- True
 bool :: Schema
-bool = Bool (const True)
+bool = SBool (const True)
 
--- | 'A.Bool' 'True'.
+-- | 'Data.Aeson.Types.Bool' 'True'.
+--
+-- ==== __Examples__
+--
+-- >>> satisfies true (Bool True)
+-- True
+--
+-- >>> satisfies true (Bool False)
+-- False
 true :: Schema
-true = Bool (== True)
+true = SBool (== True)
 
--- | 'A.Bool' 'False'.
+-- | 'Data.Aeson.Types.Bool' 'False'.
+--
+-- ==== __Examples__
+--
+-- >>> satisfies false (Bool True)
+-- False
+--
+-- >>> satisfies false (Bool False)
+-- True
 false :: Schema
-false = Bool (== False)
+false = SBool (== False)
 
--- | Any 'A.Number'.
+-- | Any 'Number'.
+--
+-- ==== __Examples__
+--
+-- >>> satisfies number (Number 1.0)
+-- True
 number :: Schema
-number = Number (const True)
+number = SNumber (const True)
 
--- | Any integer 'A.Number'.
+-- | Any integer 'Number'.
+--
+-- ==== __Examples__
+--
+-- >>> satisfies integer (Number 1.0)
+-- True
+--
+-- >>> satisfies integer (Number 1.5)
+-- False
 integer :: Schema
-integer = Number isInteger
+integer = SNumber isInteger
 
--- | Any floating 'A.Number'
-float :: Schema
-float = Number isFloating
-
--- | Some 'A.Number'.
+-- | Some 'Number'.
+--
+-- ==== __Examples__
+--
+-- >>> satisfies (someNumber (> 5)) (Number 6)
+-- True
 someNumber :: (Scientific -> Bool) -> Schema
-someNumber = Number
+someNumber = SNumber
 
--- | Some integer 'A.Number'.
+-- | Some integer 'Number'.
+--
+-- ==== __Examples__
+--
+-- >>> satisfies (someInteger (> 5)) (Number 6.0)
+-- True
+--
+-- >>> satisfies (someInteger (> 5)) (Number 6.5)
+-- False
 someInteger :: (Integer -> Bool) -> Schema
-someInteger p = Number (either nope p . floatingOrInteger)
+someInteger p = SNumber (either nope p . floatingOrInteger)
  where
   nope :: Double -> Bool
   nope _ = False
 
--- | Some floating 'A.Number'.
-someFloat :: RealFloat a => (a -> Bool) -> Schema
-someFloat p = Number (p . toRealFloat)
-
--- | Any 'A.String'.
+-- | Any 'Data.Aeson.Types.String'.
+--
+-- ==== __Examples__
+--
+-- >>> satisfies string (String "foo")
+-- True
 string :: Schema
-string = String (const True)
+string = SString (const True)
 
--- | An exact 'A.String'.
+-- | An exact 'Data.Aeson.Types.String'.
+--
+-- ==== __Examples__
+--
+-- >>> satisfies (theString "foo") (String "foo")
+-- True
+--
+-- >>> satisfies (theString "foo") (String "bar")
+-- False
 theString :: Text -> Schema
-theString s = String (== s)
+theString s = SString (== s)
 
--- | Some 'A.String'.
+-- | Some 'Data.Aeson.Types.String'.
+--
+-- ==== __Examples__
+--
+-- >>> satisfies (someString (\s -> Text.length s > 5)) (String "foobar")
+-- True
+--
+-- >>> satisfies (someString (\s -> Text.length s > 5)) (String "foo")
+-- False
 someString :: (Text -> Bool) -> Schema
-someString = String
+someString = SString
 
+-- | A 'Data.Aeson.Types.String' that matches a regular expression.
+--
+-- ==== __Examples__
+--
+-- >>> satisfies (regex "a+b") (String "xaaabx")
+-- True
+--
+-- >>> satisfies (regex "c{2}") (String "cd")
+-- False
 regex :: Text -> Schema
-regex r = String (\s -> has (_Just . _head) (Regex.match r' (encodeUtf8 s) []))
+regex r = SString (\s -> has (_Just . _head) (Regex.match r' (encodeUtf8 s) []))
  where
   r' :: Regex
   r' = Regex.compile (encodeUtf8 r) [Regex.utf8]
 
 
--- | An 'A.Object', possibly with additional unvalidated fields.
+-- | An 'Object', possibly with additional unvalidated fields.
 --
--- To match any 'A.Object', use @'object' []@.
+-- To match any 'Object', use @'object' []@.
 object :: [Field] -> Schema
-object = Object False
+object = SObject False
 
--- | An 'A.Object' with no additional fields.
+-- | An 'Object' with no additional fields.
 --
--- The @\'@ mark means \"strict\" as in @foldl'@, because 'object'' matches
--- 'A.Object's more strictly than 'object'.
+-- The @'@ mark means \"strict\" as in @foldl'@, because 'object'' matches
+-- 'Object's more strictly than 'object'.
 object' :: [Field] -> Schema
-object' = Object True
+object' = SObject True
 
 -- | A required 'Field'.
 (.:) :: Text -> Schema -> Field
 (.:) = ReqField
-infixr .:
+infixr 5 .:
 
 -- | An optional 'Field'.
 (.:?) :: Text -> Schema -> Field
 (.:?) = OptField
-infixr .:?
+infixr 5 .:?
 
--- | A "homogenous" 'A.Array' of any size.
+-- | A "homogenous" 'Array' of any size.
 --
--- The array need not be _truly_ homogenous; it simply has the same 'Schema'
--- applied to each element. However, the 'Schema' could be composed of many
--- alternatives using '<>'.
+-- The array need not be /truly/ homogenous; it simply has the same 'Schema'
+-- applied to each element. However, the 'Schema' could be 'anything', or
+-- composed of many alternatives using '<>'.
+--
+-- ==== __Examples__
+--
+-- >>> satisfies (array bool) (Array [Bool True, Bool False])
+-- True
+--
+-- >>> satisfies (array anything) (Array [Bool True, String "foo"])
+-- True
+--
+-- >>> satisfies (array integer) (Array [Number 1.5])
+-- False
 array :: Schema -> Schema
-array = Array False minBound maxBound
+array = SArray False minBound maxBound
 
--- | A sized (inclusive), "homogenous" 'A.Array'. Use 'minBound' or 'maxBound'
--- for an (effectively) unbounded edge.
+-- | A sized (inclusive), "homogenous" (see note above) 'Array'. Use 'minBound'
+-- or 'maxBound' for an unbounded edge.
+--
+-- ==== __Examples__
+--
+-- >>> satisfies (sizedArray 1 2 bool) (Array [Bool True])
+-- True
+--
+-- >>> satisfies (sizedArray 1 2 bool) (Array [Bool True, Bool True, Bool False])
+-- False
 sizedArray :: Int -> Int -> Schema -> Schema
-sizedArray = Array False
+sizedArray = SArray False
 
--- | A "homogenous", unique 'A.Array' of any size.
+-- | A "homogenous" (see note above), unique 'Array' of any size.
+--
+-- ==== __Examples__
+--
+-- >>> satisfies (set bool) (Array [Bool True])
+-- True
+--
+-- >>> satisfies (set bool) (Array [Bool True, Bool True])
+-- False
 set :: Schema -> Schema
-set = Array True minBound maxBound
+set = SArray True minBound maxBound
 
--- | A sized (inclusive), "homogenous", unique 'A.Array'. Use 'minBound' or
--- 'maxBound' for an (effectively) unbounded edge.
+-- | A sized (inclusive), "homogenous" (see note above), unique 'Array'. Use
+-- 'minBound' or 'maxBound' for an unbounded edge.
+--
+-- ==== __Examples__
+--
+-- >>> satisfies (sizedSet 1 1 string) (Array [String "foo"])
+-- True
+--
+-- >>> satisfies (sizedSet 1 1 string) (Array [String "foo", String "bar"])
+-- False
 sizedSet :: Int -> Int -> Schema -> Schema
-sizedSet = Array True
+sizedSet = SArray True
 
--- | A heterogeneous 'A.Array' exactly as long as the given list of 'Schema's.
+-- | A heterogeneous 'Array' exactly as long as the given list of 'Schema's.
+--
+-- ==== __Examples__
+--
+-- >>> satisfies (tuple [bool, string]) (Array [Bool True, String "foo"])
+-- True
 tuple :: [Schema] -> Schema
-tuple = Tuple
+tuple = STuple
 
--- | Modify a 'Schema' to additionally accept 'A.Null'.
+-- | Any 'Value' whatsoever, including 'Null'.
+--
+-- ==== __Examples__
+--
+-- >>> satisfies anything Null
+-- True
+--
+-- >>> satisfies anything (Bool True)
+-- True
+anything :: Schema
+anything = SAnything
+
+-- | Modify a 'Schema' to additionally accept 'Null'.
 --
 -- 'nullable' is idempotent:
 --
 -- @
 -- 'nullable' a = 'nullable' ('nullable' a)
 -- @
+--
+-- ==== __Examples__
+--
+-- >>> satisfies (nullable bool) (Bool True)
+-- True
+--
+-- >>> satisfies (nullable bool) Null
+-- True
 nullable :: Schema -> Schema
-nullable = Nullable
+nullable = SNullable
 
--- | Any 'A.Value' whatsoever.
-anything :: Schema
-anything = Anything
+-- | Succeed whenever the given 'Schema' fails, and vice versa.
+--
+-- @
+-- 'inverse' '.' 'inverse' = 'id'
+-- @
+--
+-- ==== __Examples__
+--
+-- >>> satisfies (inverse bool) (Bool True)
+-- False
+--
+-- >>> satisfies (inverse bool) (String "foo")
+-- True
+inverse :: Schema -> Schema
+inverse = SInverse
 
--- | Does the 'A.Value' satisfy the 'Schema'?
+-- | Does the 'Value' satisfy the 'Schema'?
 satisfies :: Schema -> Value -> Bool
-satisfies (Bool f) (A.Bool x) = f x
-satisfies (Number f) (A.Number x) = f x
-satisfies (String f) (A.String x) = f x
-satisfies (Object False fs) (A.Object o) = satisfiesObject fs o
-satisfies (Object True fs) (A.Object o) = satisfiesObject' fs o
-satisfies (Array False x y Anything) (A.Array v) =
+satisfies (SBool f) (Bool x) = f x
+satisfies (SNumber f) (Number x) = f x
+satisfies (SString f) (String x) = f x
+satisfies (SObject False fs) (Object o) = satisfiesObject fs o
+satisfies (SObject True fs) (Object o) = satisfiesObject' fs o
+satisfies (SArray False x y SAnything) (Array v) =
   let !len = Vector.length v
   in len >= x && len <= y
-satisfies (Array False x y s) (A.Array v) =
+satisfies (SArray False x y s) (Array v) =
   let !len = Vector.length v
   in len >= x && len <= y && all (satisfies s) (toList v)
-satisfies (Array True x y Anything) (A.Array v) =
+satisfies (SArray True x y SAnything) (Array v) =
   let !len = Vector.length v
   in len >= x && len <= y && len == length (toSet v)
-satisfies (Array True x y s) (A.Array v) =
+satisfies (SArray True x y s) (Array v) =
   let !len = Vector.length v
   in len >= x && len <= y && all (satisfies s) (toList v) &&
        len == length (toSet v)
-satisfies (Tuple ss) (A.Array v) = satisfiesTuple ss (toList v)
-satisfies (Nullable _) A.Null = True
-satisfies (Nullable s) v = satisfies s v
-satisfies (Alt s1 s2) v = satisfies s1 v || satisfies s2 v
-satisfies Anything _ = True
+satisfies (STuple ss) (Array v) = satisfiesTuple ss (toList v)
+satisfies SAnything _ = True
+satisfies (SNullable _) Null = True
+satisfies (SNullable s) v = satisfies s v
+satisfies (SAlt s1 s2) v = satisfies s1 v || satisfies s2 v
+satisfies (SInverse s) v = not (satisfies s v)
 satisfies _ _ = False
 
 satisfiesObject :: [Field] -> HashMap Text Value -> Bool

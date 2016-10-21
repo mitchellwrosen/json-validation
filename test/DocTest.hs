@@ -3,4 +3,4 @@ module Main where
 import Test.DocTest
 
 main :: IO ()
-main = doctest ["src"]
+main = doctest ["-XOverloadedLists", "-XOverloadedStrings", "src"]
