@@ -3,7 +3,7 @@
 module Data.Aeson.Validation
   ( -- * Schema validation
     Schema
-  , satisfies
+  , schema
     -- * Boolean schemas
   , bool
   , true
@@ -103,10 +103,10 @@ data Unique
 --
 -- ==== __Examples__
 --
--- >>> satisfies bool (Bool True)
+-- >>> schema bool (Bool True)
 -- True
 --
--- >>> satisfies bool (Bool False)
+-- >>> schema bool (Bool False)
 -- True
 bool :: Schema
 bool = SBool
@@ -115,10 +115,10 @@ bool = SBool
 --
 -- ==== __Examples__
 --
--- >>> satisfies true (Bool True)
+-- >>> schema true (Bool True)
 -- True
 --
--- >>> satisfies true (Bool False)
+-- >>> schema true (Bool False)
 -- False
 true :: Schema
 true = STrue
@@ -127,10 +127,10 @@ true = STrue
 --
 -- ==== __Examples__
 --
--- >>> satisfies false (Bool True)
+-- >>> schema false (Bool True)
 -- False
 --
--- >>> satisfies false (Bool False)
+-- >>> schema false (Bool False)
 -- True
 false :: Schema
 false = SFalse
@@ -139,7 +139,7 @@ false = SFalse
 --
 -- ==== __Examples__
 --
--- >>> satisfies number (Number 1.0)
+-- >>> schema number (Number 1.0)
 -- True
 number :: Schema
 number = SNumber (const True)
@@ -148,10 +148,10 @@ number = SNumber (const True)
 --
 -- ==== __Examples__
 --
--- >>> satisfies integer (Number 1.0)
+-- >>> schema integer (Number 1.0)
 -- True
 --
--- >>> satisfies integer (Number 1.5)
+-- >>> schema integer (Number 1.5)
 -- False
 integer :: Schema
 integer = SNumber isInteger
@@ -160,7 +160,7 @@ integer = SNumber isInteger
 --
 -- ==== __Examples__
 --
--- >>> satisfies (someNumber (> 5)) (Number 6)
+-- >>> schema (someNumber (> 5)) (Number 6)
 -- True
 someNumber :: (Scientific -> Bool) -> Schema
 someNumber = SNumber
@@ -169,10 +169,10 @@ someNumber = SNumber
 --
 -- ==== __Examples__
 --
--- >>> satisfies (someInteger (> 5)) (Number 6.0)
+-- >>> schema (someInteger (> 5)) (Number 6.0)
 -- True
 --
--- >>> satisfies (someInteger (> 5)) (Number 6.5)
+-- >>> schema (someInteger (> 5)) (Number 6.5)
 -- False
 someInteger :: (Integer -> Bool) -> Schema
 someInteger p = SNumber (either nope p . floatingOrInteger)
@@ -184,7 +184,7 @@ someInteger p = SNumber (either nope p . floatingOrInteger)
 --
 -- ==== __Examples__
 --
--- >>> satisfies string (String "foo")
+-- >>> schema string (String "foo")
 -- True
 string :: Schema
 string = SString (const True)
@@ -193,10 +193,10 @@ string = SString (const True)
 --
 -- ==== __Examples__
 --
--- >>> satisfies (theString "foo") (String "foo")
+-- >>> schema (theString "foo") (String "foo")
 -- True
 --
--- >>> satisfies (theString "foo") (String "bar")
+-- >>> schema (theString "foo") (String "bar")
 -- False
 theString :: Text -> Schema
 theString s = SString (== s)
@@ -205,10 +205,10 @@ theString s = SString (== s)
 --
 -- ==== __Examples__
 --
--- >>> satisfies (someString (\s -> Text.length s > 5)) (String "foobar")
+-- >>> schema (someString (\s -> Text.length s > 5)) (String "foobar")
 -- True
 --
--- >>> satisfies (someString (\s -> Text.length s > 5)) (String "foo")
+-- >>> schema (someString (\s -> Text.length s > 5)) (String "foo")
 -- False
 someString :: (Text -> Bool) -> Schema
 someString = SString
@@ -217,10 +217,10 @@ someString = SString
 --
 -- ==== __Examples__
 --
--- >>> satisfies (regex "a+b") (String "xaaabx")
+-- >>> schema (regex "a+b") (String "xaaabx")
 -- True
 --
--- >>> satisfies (regex "c{2}") (String "cd")
+-- >>> schema (regex "c{2}") (String "cd")
 -- False
 regex :: Text -> Schema
 regex r = SString (\s -> has (_Just . _head) (Regex.match r' (encodeUtf8 s) []))
@@ -260,13 +260,13 @@ infixr 5 .:?
 --
 -- ==== __Examples__
 --
--- >>> satisfies (array bool) (Array [Bool True, Bool False])
+-- >>> schema (array bool) (Array [Bool True, Bool False])
 -- True
 --
--- >>> satisfies (array anything) (Array [Bool True, String "foo"])
+-- >>> schema (array anything) (Array [Bool True, String "foo"])
 -- True
 --
--- >>> satisfies (array integer) (Array [Number 1.5])
+-- >>> schema (array integer) (Array [Number 1.5])
 -- False
 array :: Schema -> Schema
 array = SArray NotUnique minBound maxBound
@@ -276,10 +276,10 @@ array = SArray NotUnique minBound maxBound
 --
 -- ==== __Examples__
 --
--- >>> satisfies (sizedArray 1 2 bool) (Array [Bool True])
+-- >>> schema (sizedArray 1 2 bool) (Array [Bool True])
 -- True
 --
--- >>> satisfies (sizedArray 1 2 bool) (Array [Bool True, Bool True, Bool False])
+-- >>> schema (sizedArray 1 2 bool) (Array [Bool True, Bool True, Bool False])
 -- False
 sizedArray :: Int -> Int -> Schema -> Schema
 sizedArray = SArray NotUnique
@@ -288,10 +288,10 @@ sizedArray = SArray NotUnique
 --
 -- ==== __Examples__
 --
--- >>> satisfies (set bool) (Array [Bool True])
+-- >>> schema (set bool) (Array [Bool True])
 -- True
 --
--- >>> satisfies (set bool) (Array [Bool True, Bool True])
+-- >>> schema (set bool) (Array [Bool True, Bool True])
 -- False
 set :: Schema -> Schema
 set = SArray Unique minBound maxBound
@@ -301,10 +301,10 @@ set = SArray Unique minBound maxBound
 --
 -- ==== __Examples__
 --
--- >>> satisfies (sizedSet 1 1 string) (Array [String "foo"])
+-- >>> schema (sizedSet 1 1 string) (Array [String "foo"])
 -- True
 --
--- >>> satisfies (sizedSet 1 1 string) (Array [String "foo", String "bar"])
+-- >>> schema (sizedSet 1 1 string) (Array [String "foo", String "bar"])
 -- False
 sizedSet :: Int -> Int -> Schema -> Schema
 sizedSet = SArray Unique
@@ -313,7 +313,7 @@ sizedSet = SArray Unique
 --
 -- ==== __Examples__
 --
--- >>> satisfies (tuple [bool, string]) (Array [Bool True, String "foo"])
+-- >>> schema (tuple [bool, string]) (Array [Bool True, String "foo"])
 -- True
 tuple :: [Schema] -> Schema
 tuple = STuple
@@ -322,10 +322,10 @@ tuple = STuple
 --
 -- ==== __Examples__
 --
--- >>> satisfies anything Null
+-- >>> schema anything Null
 -- True
 --
--- >>> satisfies anything (Bool True)
+-- >>> schema anything (Bool True)
 -- True
 anything :: Schema
 anything = SAnything
@@ -340,10 +340,10 @@ anything = SAnything
 --
 -- ==== __Examples__
 --
--- >>> satisfies (nullable bool) (Bool True)
+-- >>> schema (nullable bool) (Bool True)
 -- True
 --
--- >>> satisfies (nullable bool) Null
+-- >>> schema (nullable bool) Null
 -- True
 nullable :: Schema -> Schema
 nullable = SNullable
@@ -356,70 +356,70 @@ nullable = SNullable
 --
 -- ==== __Examples__
 --
--- >>> satisfies (inverse bool) (Bool True)
+-- >>> schema (inverse bool) (Bool True)
 -- False
 --
--- >>> satisfies (inverse bool) (String "foo")
+-- >>> schema (inverse bool) (String "foo")
 -- True
 inverse :: Schema -> Schema
 inverse = SInverse
 
 -- | Does the 'Value' satisfy the 'Schema'?
-satisfies :: Schema -> Value -> Bool
-satisfies SBool (Bool _) = True
-satisfies STrue (Bool True) = True
-satisfies SFalse (Bool False) = True
-satisfies (SNumber f) (Number x) = f x
-satisfies (SString f) (String x) = f x
-satisfies (SObject NotStrict fs) (Object o) = satisfiesObject fs o
-satisfies (SObject Strict fs) (Object o) = satisfiesObject' fs o
-satisfies (SArray NotUnique x y SAnything) (Array v) =
+schema :: Schema -> Value -> Bool
+schema SBool (Bool _) = True
+schema STrue (Bool True) = True
+schema SFalse (Bool False) = True
+schema (SNumber f) (Number x) = f x
+schema (SString f) (String x) = f x
+schema (SObject NotStrict fs) (Object o) = schemaObject fs o
+schema (SObject Strict fs) (Object o) = schemaObject' fs o
+schema (SArray NotUnique x y SAnything) (Array v) =
   let !len = Vector.length v
   in len >= x && len <= y
-satisfies (SArray NotUnique x y s) (Array v) =
+schema (SArray NotUnique x y s) (Array v) =
   let !len = Vector.length v
-  in len >= x && len <= y && all (satisfies s) (toList v)
-satisfies (SArray Unique x y SAnything) (Array v) =
+  in len >= x && len <= y && all (schema s) (toList v)
+schema (SArray Unique x y SAnything) (Array v) =
   let !len = Vector.length v
   in len >= x && len <= y && len == length (toSet v)
-satisfies (SArray Unique x y s) (Array v) =
+schema (SArray Unique x y s) (Array v) =
   let !len = Vector.length v
-  in len >= x && len <= y && all (satisfies s) (toList v) &&
+  in len >= x && len <= y && all (schema s) (toList v) &&
        len == length (toSet v)
-satisfies (STuple ss) (Array v) = satisfiesTuple ss (toList v)
-satisfies SAnything _ = True
-satisfies (SNullable _) Null = True
-satisfies (SNullable s) v = satisfies s v
-satisfies (SAlt s1 s2) v = satisfies s1 v || satisfies s2 v
-satisfies (SInverse s) v = not (satisfies s v)
-satisfies _ _ = False
+schema (STuple ss) (Array v) = schemaTuple ss (toList v)
+schema SAnything _ = True
+schema (SNullable _) Null = True
+schema (SNullable s) v = schema s v
+schema (SAlt s1 s2) v = schema s1 v || schema s2 v
+schema (SInverse s) v = not (schema s v)
+schema _ _ = False
 
-satisfiesObject :: [Field] -> HashMap Text Value -> Bool
-satisfiesObject [] _ = True
-satisfiesObject (ReqField key s : xs) obj =
+schemaObject :: [Field] -> HashMap Text Value -> Bool
+schemaObject [] _ = True
+schemaObject (ReqField key s : xs) obj =
   case HashMap.lookup key obj of
     Nothing  -> False
-    Just val -> satisfies s val && satisfiesObject xs obj
-satisfiesObject (OptField key s : xs) obj =
+    Just val -> schema s val && schemaObject xs obj
+schemaObject (OptField key s : xs) obj =
   case HashMap.lookup key obj of
-    Nothing  -> satisfiesObject xs obj
-    Just val -> satisfies s val && satisfiesObject xs obj
+    Nothing  -> schemaObject xs obj
+    Just val -> schema s val && schemaObject xs obj
 
-satisfiesObject' :: [Field] -> HashMap Text Value -> Bool
-satisfiesObject' [] obj = HashMap.null obj
-satisfiesObject' (ReqField key s : xs) obj =
+schemaObject' :: [Field] -> HashMap Text Value -> Bool
+schemaObject' [] obj = HashMap.null obj
+schemaObject' (ReqField key s : xs) obj =
   case HashMap.lookup key obj of
     Nothing  -> False
-    Just val -> satisfies s val && satisfiesObject xs (HashMap.delete key obj)
-satisfiesObject' (OptField key s : xs) obj =
+    Just val -> schema s val && schemaObject xs (HashMap.delete key obj)
+schemaObject' (OptField key s : xs) obj =
   case HashMap.lookup key obj of
-    Nothing  -> satisfiesObject xs obj
-    Just val -> satisfies s val && satisfiesObject xs (HashMap.delete key obj)
+    Nothing  -> schemaObject xs obj
+    Just val -> schema s val && schemaObject xs (HashMap.delete key obj)
 
-satisfiesTuple :: [Schema] -> [Value] -> Bool
-satisfiesTuple [] [] = True
-satisfiesTuple (s:ss) (v:vs) = satisfies s v && satisfiesTuple ss vs
-satisfiesTuple _ _ = False
+schemaTuple :: [Schema] -> [Value] -> Bool
+schemaTuple [] [] = True
+schemaTuple (s:ss) (v:vs) = schema s v && schemaTuple ss vs
+schemaTuple _ _ = False
 
 toSet :: Vector Value -> HashSet Value
 toSet = Vector.foldr' HashSet.insert mempty
