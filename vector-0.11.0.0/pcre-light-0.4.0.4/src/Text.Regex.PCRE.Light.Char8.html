@@ -1,0 +1,206 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-comment">--------------------------------------------------------------------</span><span>
+</span><a name="line-2"></a><span class="hs-comment">-- |</span><span>
+</span><a name="line-3"></a><span class="hs-comment">-- Module   : Text.Regex.PCRE.Light.Char8</span><span>
+</span><a name="line-4"></a><span class="hs-comment">-- Copyright: Copyright (c) 2007-2008, Don Stewart</span><span>
+</span><a name="line-5"></a><span class="hs-comment">-- License  : BSD3</span><span>
+</span><a name="line-6"></a><span class="hs-comment">--</span><span>
+</span><a name="line-7"></a><span class="hs-comment">-- Maintainer:  Don Stewart &lt;dons@galois.com&gt;</span><span>
+</span><a name="line-8"></a><span class="hs-comment">-- Stability :  experimental</span><span>
+</span><a name="line-9"></a><span class="hs-comment">-- Portability: H98 + FFI</span><span>
+</span><a name="line-10"></a><span class="hs-comment">--</span><span>
+</span><a name="line-11"></a><span class="hs-comment">--------------------------------------------------------------------</span><span>
+</span><a name="line-12"></a><span class="hs-comment">-- </span><span>
+</span><a name="line-13"></a><span class="hs-comment">-- A simple, portable binding to perl-compatible regular expressions</span><span>
+</span><a name="line-14"></a><span class="hs-comment">-- (PCRE) via 8-bit latin1 Strings.</span><span>
+</span><a name="line-15"></a><span class="hs-comment">--</span><span>
+</span><a name="line-16"></a><span>
+</span><a name="line-17"></a><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">Text</span><span class="hs-operator">.</span><span class="hs-identifier">Regex</span><span class="hs-operator">.</span><span class="hs-identifier">PCRE</span><span class="hs-operator">.</span><span class="hs-identifier">Light</span><span class="hs-operator">.</span><span class="hs-identifier">Char8</span><span> </span><span class="hs-special">(</span><span>
+</span><a name="line-18"></a><span>
+</span><a name="line-19"></a><span>        </span><span class="hs-comment">-- * The abstract PCRE Regex type</span><span>
+</span><a name="line-20"></a><span>          </span><a href="Text.Regex.PCRE.Light.Base.html#Regex"><span class="hs-identifier hs-type">Regex</span></a><span>
+</span><a name="line-21"></a><span>
+</span><a name="line-22"></a><span>        </span><span class="hs-comment">-- * String interface</span><span>
+</span><a name="line-23"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Char8.html#compile"><span class="hs-identifier hs-var">compile</span></a><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Char8.html#compileM"><span class="hs-identifier hs-var">compileM</span></a><span>
+</span><a name="line-24"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Char8.html#match"><span class="hs-identifier hs-var">match</span></a><span>
+</span><a name="line-25"></a><span>
+</span><a name="line-26"></a><span>        </span><span class="hs-comment">-- * Regex types and constructors externally visible</span><span>
+</span><a name="line-27"></a><span>
+</span><a name="line-28"></a><span>        </span><span class="hs-comment">-- ** PCRE compile-time bit flags</span><span>
+</span><a name="line-29"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#PCREOption"><span class="hs-identifier hs-type">PCREOption</span></a><span>
+</span><a name="line-30"></a><span>
+</span><a name="line-31"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#anchored"><span class="hs-identifier hs-var">anchored</span></a><span>
+</span><a name="line-32"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#auto_callout"><span class="hs-identifier hs-var">auto_callout</span></a><span>
+</span><a name="line-33"></a><span>        </span><span class="hs-comment">{-, bsr_anycrlf-}</span><span>
+</span><a name="line-34"></a><span>        </span><span class="hs-comment">{-, bsr_unicode-}</span><span>
+</span><a name="line-35"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#caseless"><span class="hs-identifier hs-var">caseless</span></a><span>
+</span><a name="line-36"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#dollar_endonly"><span class="hs-identifier hs-var">dollar_endonly</span></a><span>
+</span><a name="line-37"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#dotall"><span class="hs-identifier hs-var">dotall</span></a><span>
+</span><a name="line-38"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#dupnames"><span class="hs-identifier hs-var">dupnames</span></a><span>
+</span><a name="line-39"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#extended"><span class="hs-identifier hs-var">extended</span></a><span>
+</span><a name="line-40"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#extra"><span class="hs-identifier hs-var">extra</span></a><span>
+</span><a name="line-41"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#firstline"><span class="hs-identifier hs-var">firstline</span></a><span>
+</span><a name="line-42"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#multiline"><span class="hs-identifier hs-var">multiline</span></a><span>
+</span><a name="line-43"></a><span>        </span><span class="hs-comment">{-, newline_any-}</span><span>
+</span><a name="line-44"></a><span>        </span><span class="hs-comment">{-, newline_anycrlf-}</span><span>
+</span><a name="line-45"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#newline_cr"><span class="hs-identifier hs-var">newline_cr</span></a><span>
+</span><a name="line-46"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#newline_crlf"><span class="hs-identifier hs-var">newline_crlf</span></a><span>
+</span><a name="line-47"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#newline_lf"><span class="hs-identifier hs-var">newline_lf</span></a><span>
+</span><a name="line-48"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#no_auto_capture"><span class="hs-identifier hs-var">no_auto_capture</span></a><span>
+</span><a name="line-49"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#ungreedy"><span class="hs-identifier hs-var">ungreedy</span></a><span>
+</span><a name="line-50"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#utf8"><span class="hs-identifier hs-var">utf8</span></a><span>
+</span><a name="line-51"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#no_utf8_check"><span class="hs-identifier hs-var">no_utf8_check</span></a><span>
+</span><a name="line-52"></a><span>
+</span><a name="line-53"></a><span>        </span><span class="hs-comment">-- ** PCRE exec-time bit flags</span><span>
+</span><a name="line-54"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#PCREExecOption"><span class="hs-identifier hs-type">PCREExecOption</span></a><span>
+</span><a name="line-55"></a><span>
+</span><a name="line-56"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#exec_anchored"><span class="hs-identifier hs-var">exec_anchored</span></a><span>
+</span><a name="line-57"></a><span>        </span><span class="hs-comment">{-, exec_newline_any     -}</span><span>
+</span><a name="line-58"></a><span>        </span><span class="hs-comment">{-, exec_newline_anycrlf -}</span><span>
+</span><a name="line-59"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#exec_newline_cr"><span class="hs-identifier hs-var">exec_newline_cr</span></a><span>
+</span><a name="line-60"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#exec_newline_crlf"><span class="hs-identifier hs-var">exec_newline_crlf</span></a><span>
+</span><a name="line-61"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#exec_newline_lf"><span class="hs-identifier hs-var">exec_newline_lf</span></a><span>
+</span><a name="line-62"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#exec_notbol"><span class="hs-identifier hs-var">exec_notbol</span></a><span>
+</span><a name="line-63"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#exec_noteol"><span class="hs-identifier hs-var">exec_noteol</span></a><span>
+</span><a name="line-64"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#exec_notempty"><span class="hs-identifier hs-var">exec_notempty</span></a><span>
+</span><a name="line-65"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#exec_no_utf8_check"><span class="hs-identifier hs-var">exec_no_utf8_check</span></a><span>
+</span><a name="line-66"></a><span>        </span><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#exec_partial"><span class="hs-identifier hs-var">exec_partial</span></a><span>
+</span><a name="line-67"></a><span>
+</span><a name="line-68"></a><span>    </span><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><a name="line-69"></a><span>
+</span><a name="line-70"></a><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">ByteString</span><span class="hs-operator">.</span><span class="hs-identifier">Char8</span><span> </span><span class="hs-keyword">as</span><span> </span><span class="hs-identifier">S</span><span>
+</span><a name="line-71"></a><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><a href="Text.Regex.PCRE.Light.html"><span class="hs-identifier">Text</span><span class="hs-operator">.</span><span class="hs-identifier">Regex</span><span class="hs-operator">.</span><span class="hs-identifier">PCRE</span><span class="hs-operator">.</span><span class="hs-identifier">Light</span></a><span> </span><span class="hs-keyword">as</span><span> </span><span class="hs-identifier">S</span><span>
+</span><a name="line-72"></a><span class="hs-keyword">import</span><span> </span><a href="Text.Regex.PCRE.Light.html"><span class="hs-identifier">Text</span><span class="hs-operator">.</span><span class="hs-identifier">Regex</span><span class="hs-operator">.</span><span class="hs-identifier">PCRE</span><span class="hs-operator">.</span><span class="hs-identifier">Light</span></a><span> </span><span class="hs-keyword">hiding</span><span> </span><span class="hs-special">(</span><a href="Text.Regex.PCRE.Light.html#match"><span class="hs-identifier hs-var">match</span></a><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.html#compile"><span class="hs-identifier hs-var">compile</span></a><span class="hs-special">,</span><span> </span><a href="Text.Regex.PCRE.Light.html#compileM"><span class="hs-identifier hs-var">compileM</span></a><span class="hs-special">)</span><span>
+</span><a name="line-73"></a><span>
+</span><a name="line-74"></a><span class="hs-comment">-- | 'compile'</span><span>
+</span><a name="line-75"></a><span class="hs-comment">--</span><span>
+</span><a name="line-76"></a><span class="hs-comment">-- Compile a perl-compatible regular expression, in a strict bytestring.</span><span>
+</span><a name="line-77"></a><span class="hs-comment">-- The arguments are:</span><span>
+</span><a name="line-78"></a><span class="hs-comment">--</span><span>
+</span><a name="line-79"></a><span class="hs-comment">-- * 'pat': A ByteString, which may or may not be zero-terminated,</span><span>
+</span><a name="line-80"></a><span class="hs-comment">-- containing the regular expression to be compiled. </span><span>
+</span><a name="line-81"></a><span class="hs-comment">--</span><span>
+</span><a name="line-82"></a><span class="hs-comment">-- * 'flags', optional bit flags. If 'Nothing' is provided, defaults are used.</span><span>
+</span><a name="line-83"></a><span class="hs-comment">--</span><span>
+</span><a name="line-84"></a><span class="hs-comment">-- Valid compile-time flags are:</span><span>
+</span><a name="line-85"></a><span class="hs-comment">--</span><span>
+</span><a name="line-86"></a><span class="hs-comment">-- * 'anchored'        - Force pattern anchoring</span><span>
+</span><a name="line-87"></a><span class="hs-comment">--</span><span>
+</span><a name="line-88"></a><span class="hs-comment">-- * 'auto_callout'    - Compile automatic callouts</span><span>
+</span><a name="line-89"></a><span class="hs-comment">--</span><span>
+</span><a name="line-90"></a><span class="hs-comment">-- * 'bsr_anycrlf'     - \\R matches only CR, LF, or CRLF</span><span>
+</span><a name="line-91"></a><span class="hs-comment">--</span><span>
+</span><a name="line-92"></a><span class="hs-comment">-- * 'bsr_unicode'     - \\R matches all Unicode line endings</span><span>
+</span><a name="line-93"></a><span class="hs-comment">--</span><span>
+</span><a name="line-94"></a><span class="hs-comment">-- * 'caseless'        - Do caseless matching</span><span>
+</span><a name="line-95"></a><span class="hs-comment">--</span><span>
+</span><a name="line-96"></a><span class="hs-comment">-- * 'dollar_endonly'  - '$' not to match newline at end</span><span>
+</span><a name="line-97"></a><span class="hs-comment">--</span><span>
+</span><a name="line-98"></a><span class="hs-comment">-- * 'dotall'          - matches anything including NL</span><span>
+</span><a name="line-99"></a><span class="hs-comment">--</span><span>
+</span><a name="line-100"></a><span class="hs-comment">-- * 'dupnames'        - Allow duplicate names for subpatterns</span><span>
+</span><a name="line-101"></a><span class="hs-comment">--</span><span>
+</span><a name="line-102"></a><span class="hs-comment">-- * 'extended'        - Ignore whitespace and # comments</span><span>
+</span><a name="line-103"></a><span class="hs-comment">--</span><span>
+</span><a name="line-104"></a><span class="hs-comment">-- * 'extra'           - PCRE extra features (not much use currently)</span><span>
+</span><a name="line-105"></a><span class="hs-comment">--</span><span>
+</span><a name="line-106"></a><span class="hs-comment">-- * 'firstline'       - Force matching to be  before  newline</span><span>
+</span><a name="line-107"></a><span class="hs-comment">--</span><span>
+</span><a name="line-108"></a><span class="hs-comment">-- * 'multiline'       - '^' and '$' match newlines within data</span><span>
+</span><a name="line-109"></a><span class="hs-comment">--</span><span>
+</span><a name="line-110"></a><span class="hs-comment">-- * 'newline_any'     - Recognize any Unicode newline sequence</span><span>
+</span><a name="line-111"></a><span class="hs-comment">--</span><span>
+</span><a name="line-112"></a><span class="hs-comment">-- * 'newline_anycrlf' - Recognize CR, LF, and CRLF as newline sequences</span><span>
+</span><a name="line-113"></a><span class="hs-comment">--</span><span>
+</span><a name="line-114"></a><span class="hs-comment">-- * 'newline_cr'      - Set CR as the newline sequence</span><span>
+</span><a name="line-115"></a><span class="hs-comment">--</span><span>
+</span><a name="line-116"></a><span class="hs-comment">-- * 'newline_crlf'    - Set CRLF as the newline sequence</span><span>
+</span><a name="line-117"></a><span class="hs-comment">--</span><span>
+</span><a name="line-118"></a><span class="hs-comment">-- * 'newline_lf'      - Set LF as the newline sequence</span><span>
+</span><a name="line-119"></a><span class="hs-comment">--</span><span>
+</span><a name="line-120"></a><span class="hs-comment">-- * 'no_auto_capture' - Disable numbered capturing parentheses (named ones available)</span><span>
+</span><a name="line-121"></a><span class="hs-comment">--</span><span>
+</span><a name="line-122"></a><span class="hs-comment">-- * 'ungreedy'        - Invert greediness of quantifiers</span><span>
+</span><a name="line-123"></a><span class="hs-comment">--</span><span>
+</span><a name="line-124"></a><span class="hs-comment">-- * 'utf8'            - Run in UTF-8 mode</span><span>
+</span><a name="line-125"></a><span class="hs-comment">--</span><span>
+</span><a name="line-126"></a><span class="hs-comment">-- * 'no_utf8_check'   - Do not check the pattern for UTF-8 validity</span><span>
+</span><a name="line-127"></a><span class="hs-comment">--</span><span>
+</span><a name="line-128"></a><span class="hs-comment">-- If compilation of the pattern fails, the 'Left' constructor is </span><span>
+</span><a name="line-129"></a><span class="hs-comment">-- returned with the error string. Otherwise an abstract type</span><span>
+</span><a name="line-130"></a><span class="hs-comment">-- representing the compiled regular expression is returned.</span><span>
+</span><a name="line-131"></a><span class="hs-comment">-- The regex is allocated via malloc on the C side, and will be</span><span>
+</span><a name="line-132"></a><span class="hs-comment">-- deallocated by the runtime when the Haskell value representing it</span><span>
+</span><a name="line-133"></a><span class="hs-comment">-- goes out of scope.</span><span>
+</span><a name="line-134"></a><span class="hs-comment">--</span><span>
+</span><a name="line-135"></a><span class="hs-comment">-- As regexes are often defined statically, GHC will compile them </span><span>
+</span><a name="line-136"></a><span class="hs-comment">-- to null-terminated, strict C strings, enabling compilation of the </span><span>
+</span><a name="line-137"></a><span class="hs-comment">-- pattern without copying. This may be useful for very large patterns.</span><span>
+</span><a name="line-138"></a><span class="hs-comment">--</span><span>
+</span><a name="line-139"></a><span class="hs-comment">-- See man pcreapi for more details.</span><span>
+</span><a name="line-140"></a><span class="hs-comment">--</span><span>
+</span><a name="line-141"></a><span class="hs-identifier">compile</span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">String</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">[</span><a href="Text.Regex.PCRE.Light.Base.html#PCREOption"><span class="hs-identifier hs-type">PCREOption</span></a><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#Regex"><span class="hs-identifier hs-type">Regex</span></a><span>
+</span><a name="line-142"></a><a name="compile"><a href="Text.Regex.PCRE.Light.Char8.html#compile"><span class="hs-identifier">compile</span></a></a><span> </span><a name="local-1627427008"><a href="#local-1627427008"><span class="hs-identifier">str</span></a></a><span> </span><a name="local-1627427009"><a href="#local-1627427009"><span class="hs-identifier">os</span></a></a><span> </span><span class="hs-glyph">=</span><span> </span><a href="Text.Regex.PCRE.Light.html#compile"><span class="hs-identifier hs-var">S</span><span class="hs-operator hs-var">.</span><span class="hs-identifier hs-var">compile</span></a><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-var">S</span><span class="hs-operator hs-var">.</span><span class="hs-identifier hs-var">pack</span><span> </span><a href="#local-1627427008"><span class="hs-identifier hs-var">str</span></a><span class="hs-special">)</span><span> </span><a href="#local-1627427009"><span class="hs-identifier hs-var">os</span></a><span>
+</span><a name="line-143"></a><span class="hs-pragma">{-# INLINE compile #-}</span><span>
+</span><a name="line-144"></a><span>
+</span><a name="line-145"></a><span class="hs-comment">-- | 'compileM'</span><span>
+</span><a name="line-146"></a><span class="hs-comment">-- A safe version of 'compile' with failure lifted into an Either</span><span>
+</span><a name="line-147"></a><span class="hs-identifier">compileM</span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">String</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">[</span><a href="Text.Regex.PCRE.Light.Base.html#PCREOption"><span class="hs-identifier hs-type">PCREOption</span></a><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-type">Either</span><span> </span><span class="hs-identifier hs-type">String</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#Regex"><span class="hs-identifier hs-type">Regex</span></a><span>
+</span><a name="line-148"></a><a name="compileM"><a href="Text.Regex.PCRE.Light.Char8.html#compileM"><span class="hs-identifier">compileM</span></a></a><span> </span><a name="local-1627427010"><a href="#local-1627427010"><span class="hs-identifier">str</span></a></a><span> </span><a name="local-1627427011"><a href="#local-1627427011"><span class="hs-identifier">os</span></a></a><span> </span><span class="hs-glyph">=</span><span> </span><a href="Text.Regex.PCRE.Light.html#compileM"><span class="hs-identifier hs-var">S</span><span class="hs-operator hs-var">.</span><span class="hs-identifier hs-var">compileM</span></a><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-var">S</span><span class="hs-operator hs-var">.</span><span class="hs-identifier hs-var">pack</span><span> </span><a href="#local-1627427010"><span class="hs-identifier hs-var">str</span></a><span class="hs-special">)</span><span> </span><a href="#local-1627427011"><span class="hs-identifier hs-var">os</span></a><span>
+</span><a name="line-149"></a><span class="hs-pragma">{-# INLINE compileM #-}</span><span>
+</span><a name="line-150"></a><span>
+</span><a name="line-151"></a><span>
+</span><a name="line-152"></a><span class="hs-comment">-- | 'match'</span><span>
+</span><a name="line-153"></a><span class="hs-comment">--</span><span>
+</span><a name="line-154"></a><span class="hs-comment">-- Matches a compiled regular expression against a given subject string,</span><span>
+</span><a name="line-155"></a><span class="hs-comment">-- using a matching algorithm that is similar to Perl's. If the subject</span><span>
+</span><a name="line-156"></a><span class="hs-comment">-- string doesn't match the regular expression, 'Nothing' is returned,</span><span>
+</span><a name="line-157"></a><span class="hs-comment">-- otherwise the portion of the string that matched is returned, along</span><span>
+</span><a name="line-158"></a><span class="hs-comment">-- with any captured subpatterns.</span><span>
+</span><a name="line-159"></a><span class="hs-comment">--</span><span>
+</span><a name="line-160"></a><span class="hs-comment">-- The arguments are:</span><span>
+</span><a name="line-161"></a><span class="hs-comment">--</span><span>
+</span><a name="line-162"></a><span class="hs-comment">-- * 'regex', a PCRE regular expression value produced by compile</span><span>
+</span><a name="line-163"></a><span class="hs-comment">--</span><span>
+</span><a name="line-164"></a><span class="hs-comment">-- * 'subject', the subject string to match against</span><span>
+</span><a name="line-165"></a><span class="hs-comment">--</span><span>
+</span><a name="line-166"></a><span class="hs-comment">-- * 'options', an optional set of exec-time flags to exec.</span><span>
+</span><a name="line-167"></a><span class="hs-comment">--</span><span>
+</span><a name="line-168"></a><span class="hs-comment">-- Available runtime options are:</span><span>
+</span><a name="line-169"></a><span class="hs-comment">--</span><span>
+</span><a name="line-170"></a><span class="hs-comment">-- * 'anchored'        - Match only at the first position</span><span>
+</span><a name="line-171"></a><span class="hs-comment">--</span><span>
+</span><a name="line-172"></a><span class="hs-comment">-- * 'bsr_anycrlf'     - '\\R' matches only CR, LF, or CRLF</span><span>
+</span><a name="line-173"></a><span class="hs-comment">--</span><span>
+</span><a name="line-174"></a><span class="hs-comment">-- * 'bsr_unicode'     - '\\R' matches all Unicode line endings</span><span>
+</span><a name="line-175"></a><span class="hs-comment">--</span><span>
+</span><a name="line-176"></a><span class="hs-comment">-- * 'newline_any'     - Recognize any Unicode newline sequence</span><span>
+</span><a name="line-177"></a><span class="hs-comment">--</span><span>
+</span><a name="line-178"></a><span class="hs-comment">-- * 'newline_anycrlf' - Recognize CR, LF, and CRLF as newline sequences</span><span>
+</span><a name="line-179"></a><span class="hs-comment">--</span><span>
+</span><a name="line-180"></a><span class="hs-comment">-- * 'newline_cr'      - Set CR as the newline sequence</span><span>
+</span><a name="line-181"></a><span class="hs-comment">--</span><span>
+</span><a name="line-182"></a><span class="hs-comment">-- * 'newline_crlf'    - Set CRLF as the newline sequence</span><span>
+</span><a name="line-183"></a><span class="hs-comment">--</span><span>
+</span><a name="line-184"></a><span class="hs-comment">-- * 'newline_lf'      - Set LF as the newline sequence</span><span>
+</span><a name="line-185"></a><span class="hs-comment">--</span><span>
+</span><a name="line-186"></a><span class="hs-comment">-- * 'notbol'          - Subject is not the beginning of a line</span><span>
+</span><a name="line-187"></a><span class="hs-comment">--</span><span>
+</span><a name="line-188"></a><span class="hs-comment">-- * 'noteol'          - Subject is not the end of a line</span><span>
+</span><a name="line-189"></a><span class="hs-comment">--</span><span>
+</span><a name="line-190"></a><span class="hs-comment">-- * 'notempty'        - An empty string is not a valid match</span><span>
+</span><a name="line-191"></a><span class="hs-comment">--</span><span>
+</span><a name="line-192"></a><span class="hs-comment">-- * 'no_utf8_check'   - Do not check the subject for UTF-8</span><span>
+</span><a name="line-193"></a><span class="hs-comment">--</span><span>
+</span><a name="line-194"></a><span class="hs-comment">-- * 'partial'         - Return PCRE_ERROR_PARTIAL for a partial match</span><span>
+</span><a name="line-195"></a><span class="hs-comment">--</span><span>
+</span><a name="line-196"></a><span class="hs-comment">-- The result value, and any captured subpatterns, are returned.</span><span>
+</span><a name="line-197"></a><span class="hs-comment">-- If the regex is invalid, or the subject string is empty, Nothing</span><span>
+</span><a name="line-198"></a><span class="hs-comment">-- is returned.</span><span>
+</span><a name="line-199"></a><span class="hs-comment">--</span><span>
+</span><a name="line-200"></a><span class="hs-identifier">match</span><span> </span><span class="hs-glyph">::</span><span> </span><a href="Text.Regex.PCRE.Light.Base.html#Regex"><span class="hs-identifier hs-type">Regex</span></a><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-type">String</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">[</span><a href="Text.Regex.PCRE.Light.Base.html#PCREExecOption"><span class="hs-identifier hs-type">PCREExecOption</span></a><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-type">Maybe</span><span> </span><span class="hs-special">[</span><span class="hs-identifier hs-type">String</span><span class="hs-special">]</span><span>
+</span><a name="line-201"></a><a name="match"><a href="Text.Regex.PCRE.Light.Char8.html#match"><span class="hs-identifier">match</span></a></a><span> </span><a name="local-1627427012"><a href="#local-1627427012"><span class="hs-identifier">r</span></a></a><span> </span><a name="local-1627427013"><a href="#local-1627427013"><span class="hs-identifier">subject</span></a></a><span> </span><a name="local-1627427014"><a href="#local-1627427014"><span class="hs-identifier">os</span></a></a><span> </span><span class="hs-glyph">=</span><span>
+</span><a name="line-202"></a><span>    </span><span class="hs-keyword">case</span><span> </span><a href="Text.Regex.PCRE.Light.html#match"><span class="hs-identifier hs-var">S</span><span class="hs-operator hs-var">.</span><span class="hs-identifier hs-var">match</span></a><span> </span><a href="#local-1627427012"><span class="hs-identifier hs-var">r</span></a><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-var">S</span><span class="hs-operator hs-var">.</span><span class="hs-identifier hs-var">pack</span><span> </span><a href="#local-1627427013"><span class="hs-identifier hs-var">subject</span></a><span class="hs-special">)</span><span> </span><a href="#local-1627427014"><span class="hs-identifier hs-var">os</span></a><span> </span><span class="hs-keyword">of</span><span>
+</span><a name="line-203"></a><span>           </span><span class="hs-identifier hs-var">Nothing</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-var">Nothing</span><span>
+</span><a name="line-204"></a><span>           </span><span class="hs-identifier hs-var">Just</span><span> </span><a name="local-1627427015"><a href="#local-1627427015"><span class="hs-identifier">x</span></a></a><span>  </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-var">Just</span><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-var">map</span><span> </span><span class="hs-identifier hs-var">S</span><span class="hs-operator hs-var">.</span><span class="hs-identifier hs-var">unpack</span><span> </span><a href="#local-1627427015"><span class="hs-identifier hs-var">x</span></a><span class="hs-special">)</span><span>
+</span><a name="line-205"></a><span class="hs-pragma">{-# INLINE match #-}</span><span>
+</span><a name="line-206"></a></pre></body></html>
