@@ -1,4 +1,8 @@
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BangPatterns         #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE InstanceSigs         #-}
+{-# LANGUAGE OverloadedStrings    #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 -- | JSON schema validation.
 
@@ -39,6 +43,8 @@ module Data.Aeson.Validation
   , nullable
   ) where
 
+import Data.Aeson.Validation.Types
+
 import Data.Aeson            (Value(..))
 import Data.HashMap.Strict   (HashMap)
 import Data.HashSet          (HashSet)
@@ -59,48 +65,6 @@ import qualified Text.Regex.PCRE.Light as Regex
 -- $setup
 -- >>> import Test.QuickCheck.Instances ()
 -- >>> import qualified Data.Text as Text
-
--- | An opaque object 'Field'.
---
--- Create a 'Field' with '.:' or '.:?', and bundle it into a 'Schema' using
--- 'object' or 'object''
-data Field
-  = ReqField !Text Schema
-  | OptField !Text Schema
-
--- | An opaque JSON 'Schema'.
-data Schema
-  = SBool
-  | STrue
-  | SFalse
-  | SNumber (Scientific -> Bool)
-  | SString (Text -> Bool)
-  | SObject !Strict [Field]
-  | SArray !Unique !Int {- min len -} !Int {- max len -} Schema
-  | STuple [Schema]
-  | SAnything
-  | SNullable Schema
-  | SAlt Schema Schema
-  | SInverse Schema
-
--- | The '<>' operator is used to create a /sum/ 'Schema' that, when applied to
--- a 'Value', first tries the left 'Schema', then falls back on the right one if
--- the left one fails.
---
--- @
--- 'schema' (s1 '<>' s2) val = 'schema' s1 val '||' 'schema' s2 val
--- @
---
--- >>> schema (bool <> string) (Bool True)
--- True
---
--- >>> schema (bool <> string) (String "foo")
--- True
---
--- >>> schema (bool <> string) (Number 1)
--- False
-instance Semigroup Schema where
-  (<>) = SAlt
 
 -- | The 'Num' instance only defines two functions; all other 'Num' functions
 -- call 'error'.
@@ -127,7 +91,6 @@ instance Semigroup Schema where
 --
 --         >>> schema (negate bool) (String "foo")
 --         True
---
 instance Num Schema where
   (+)    = error "Data.Aeson.Validation: (+) not implemented for Schema"
   (-)    = error "Data.Aeson.Validation: (-) not implemented for Schema"
@@ -149,15 +112,24 @@ instance Num Schema where
 instance IsString Schema where
   fromString = theString . fromString
 
--- | Are extra properties of an object allowed?
-data Strict
-  = Strict
-  | NotStrict
-
--- | Are duplicate elements in an array allowed?
-data Unique
-  = Unique
-  | NotUnique
+-- | The '<>' operator is used to create a /sum/ 'Schema' that, when applied to
+-- a 'Value', first tries the left 'Schema', then falls back on the right one if
+-- the left one fails.
+--
+-- @
+-- 'schema' (s1 '<>' s2) val = 'schema' s1 val '||' 'schema' s2 val
+-- @
+--
+-- >>> schema (bool <> string) (Bool True)
+-- True
+--
+-- >>> schema (bool <> string) (String "foo")
+-- True
+--
+-- >>> schema (bool <> string) (Number 1)
+-- False
+instance Semigroup Schema where
+  (<>) = SAlt
 
 -- | Any 'Data.Aeson.Types.Bool'.
 --
@@ -202,7 +174,7 @@ false = SFalse
 -- >>> schema number (Number 1.0)
 -- True
 number :: Schema
-number = SNumber (const True)
+number = SNumber
 
 -- | Any integer 'Number'.
 --
@@ -214,31 +186,97 @@ number = SNumber (const True)
 -- >>> schema integer (Number 1.5)
 -- False
 integer :: Schema
-integer = SNumber isInteger
+integer = SInteger
 
--- | Some 'Number'.
---
--- ==== __Examples__
---
--- >>> schema (someNumber (> 5)) (Number 6)
--- True
-someNumber :: (Scientific -> Bool) -> Schema
-someNumber = SNumber
+class A schema where
+  -- | Some 'Number'.
+  --
+  -- The unexported @A@ typeclass exists to overload 'someNumber' with precicely
+  -- two possible types:
+  --
+  -- @
+  -- 'someNumber' :: ('Scientific' -> 'Bool') -> 'Schema'
+  -- 'someNumber' :: ('Scientific' -> 'Bool') -> 'Text' -> 'Schema'
+  -- @
+  --
+  -- The optional 'Text' argument is used for error reporting if validation
+  -- fails.
+  --
+  -- ==== __Examples__
+  --
+  -- >>> schema (someNumber (> 5)) (Number 6)
+  -- True
+  someNumber :: (Scientific -> Bool) -> schema
 
--- | Some integer 'Number'.
---
--- ==== __Examples__
---
--- >>> schema (someInteger (> 5)) (Number 6.0)
--- True
---
--- >>> schema (someInteger (> 5)) (Number 6.5)
--- False
-someInteger :: (Integer -> Bool) -> Schema
-someInteger p = SNumber (either nope p . floatingOrInteger)
- where
-  nope :: Double -> Bool
-  nope _ = False
+  -- | Some integer 'Number'.
+  --
+  -- The unexported @A@ typeclass exists to overload 'someInteger' with
+  -- precicely two possible types:
+  --
+  -- @
+  -- 'someInteger' :: ('Integer' -> 'Bool') -> 'Schema'
+  -- 'someInteger' :: ('Integer' -> 'Bool') -> 'Text' -> 'Schema'
+  -- @
+  --
+  -- The optional 'Text' argument is used for error reporting if validation
+  -- fails.
+  --
+  -- ==== __Examples__
+  --
+  -- >>> schema (someInteger (> 5)) (Number 6.0)
+  -- True
+  --
+  -- >>> schema (someInteger (> 5)) (Number 6.5)
+  -- False
+  someInteger :: (Integer -> Bool) -> schema
+
+  -- | Some 'Data.Aeson.Types.String'.
+  --
+  -- The unexported @A@ typeclass exists to overload 'someString' with precicely
+  -- two possible types:
+  --
+  -- @
+  -- 'someString' :: ('Text' -> 'Bool') -> 'Schema'
+  -- 'someString' :: ('Text' -> 'Bool') -> 'Text' -> 'Schema'
+  -- @
+  --
+  -- The optional 'Text' argument is used for error reporting if validation
+  -- fails.
+  --
+  -- ==== __Examples__
+  --
+  -- >>> schema (someString (\s -> Text.length s > 5)) (String "foobar")
+  -- True
+  --
+  -- >>> schema (someString (\s -> Text.length s > 5)) (String "foo")
+  -- False
+  someString :: (Text -> Bool) -> schema
+
+instance A Schema where
+  someNumber :: (Scientific -> Bool) -> Schema
+  someNumber p = SSomeNumber p Nothing
+
+  someInteger :: (Integer -> Bool) -> Schema
+  someInteger p = SSomeNumber (either nope p . floatingOrInteger) Nothing
+   where
+    nope :: Double -> Bool
+    nope _ = False
+
+  someString :: (Text -> Bool) -> Schema
+  someString p = SSomeString p Nothing
+
+instance A (Text -> Schema) where
+  someNumber :: (Scientific -> Bool) -> Text -> Schema
+  someNumber p s = SSomeNumber p (Just s)
+
+  someInteger :: (Integer -> Bool) -> Text -> Schema
+  someInteger p s = SSomeNumber (either nope p . floatingOrInteger) (Just s)
+   where
+    nope :: Double -> Bool
+    nope _ = False
+
+  someString :: (Text -> Bool) -> Text -> Schema
+  someString p s = SSomeString p (Just s)
 
 -- | Any 'Data.Aeson.Types.String'.
 --
@@ -247,7 +285,7 @@ someInteger p = SNumber (either nope p . floatingOrInteger)
 -- >>> schema string (String "foo")
 -- True
 string :: Schema
-string = SString (const True)
+string = SString
 
 -- | An exact 'Data.Aeson.Types.String'. This is what the @OverloadedStrings@
 -- instance uses when making a 'Schema' from a string literal.
@@ -260,19 +298,7 @@ string = SString (const True)
 -- >>> schema (theString "foo") (String "bar")
 -- False
 theString :: Text -> Schema
-theString s = SString (== s)
-
--- | Some 'Data.Aeson.Types.String'.
---
--- ==== __Examples__
---
--- >>> schema (someString (\s -> Text.length s > 5)) (String "foobar")
--- True
---
--- >>> schema (someString (\s -> Text.length s > 5)) (String "foo")
--- False
-someString :: (Text -> Bool) -> Schema
-someString = SString
+theString = STheString
 
 -- | A 'Data.Aeson.Types.String' that matches a regular expression.
 --
@@ -284,8 +310,11 @@ someString = SString
 -- >>> schema (regex "c{2}") (String "cd")
 -- False
 regex :: Text -> Schema
-regex r = SString (\s -> has (_Just . _head) (Regex.match r' (encodeUtf8 s) []))
+regex r = SSomeString p (Just ("matches " <> r))
  where
+  p :: Text -> Bool
+  p s = has (_Just . _head) (Regex.match r' (encodeUtf8 s) [])
+
   r' :: Regex
   r' = Regex.compile (encodeUtf8 r) [Regex.utf8]
 
@@ -414,8 +443,12 @@ schema :: Schema -> Value -> Bool
 schema SBool (Bool _) = True
 schema STrue (Bool True) = True
 schema SFalse (Bool False) = True
-schema (SNumber f) (Number x) = f x
-schema (SString f) (String x) = f x
+schema SNumber (Number _) = True
+schema SInteger (Number x) = isInteger x
+schema (SSomeNumber f _) (Number x) = f x
+schema SString (String _) = True
+schema (STheString s) (String x) = s == x
+schema (SSomeString f _) (String x) = f x
 schema (SObject NotStrict fs) (Object o) = schemaObject fs o
 schema (SObject Strict fs) (Object o) = schemaObject' fs o
 schema (SArray NotUnique x y SAnything) (Array v) =
