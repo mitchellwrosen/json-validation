@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns         #-}
 {-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE GADTs                #-}
 {-# LANGUAGE InstanceSigs         #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
@@ -265,7 +266,7 @@ instance A Schema where
   someString :: (Text -> Bool) -> Schema
   someString p = SSomeString p Nothing
 
-instance A (Text -> Schema) where
+instance (a ~ Text) => A (a -> Schema) where
   someNumber :: (Scientific -> Bool) -> Text -> Schema
   someNumber p s = SSomeNumber p (Just s)
 
