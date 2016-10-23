@@ -12,7 +12,9 @@ library:
     - Data.Aeson.Validation.Types
   dependencies:
     - aeson
+    - containers
     - microlens
+    - mtl
     - pcre-light
     - scientific
     - text

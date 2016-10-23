@@ -11,5 +11,5 @@ Of these, this library is most similar to `json-schema`, in that it is not an im
 
 ## TODOs
 
-- Better validation (right now it just returns a single `Bool`)
+- More tests
 - Steal some pre-defined formats from http://json-schema.org/latest/json-schema-validation.html#anchor104

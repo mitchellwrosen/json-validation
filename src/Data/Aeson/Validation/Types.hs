@@ -2,8 +2,11 @@
 
 module Data.Aeson.Validation.Types where
 
-import Data.Text       (Text)
-import Data.Scientific (Scientific)
+import Control.Monad.Reader (ReaderT)
+import Control.Monad.Writer (Writer)
+import Data.Text            (Text)
+import Data.Scientific      (Scientific)
+import Data.Sequence        (Seq)
 
 -- | An opaque object 'Field'.
 --
@@ -22,15 +25,15 @@ data Schema
   | SInteger
   | SSomeNumber (Scientific -> Bool) (Maybe Text) {- error msg -}
   | SString
-  | STheString Text
+  | STheString !Text
   | SSomeString (Text -> Bool) (Maybe Text) {- error msg -}
   | SObject Strict [Field]
-  | SArray Unique Int {- min len -} !Int {- max len -} Schema
+  | SArray Unique !Int {- min len -} !Int {- max len -} Schema
   | STuple [Schema]
   | SAnything
   | SNullable Schema
   | SAlt Schema Schema
-  | SInverse Schema
+  | SNegate Schema
 
 -- | Are extra properties of an object allowed?
 data Strict
@@ -41,9 +44,13 @@ data Strict
 data Unique
   = Unique
   | NotUnique
+  deriving Eq
+
+-- | The validation monad.
+type Validation a = ReaderT Context (Writer (Seq Text)) a
 
 -- | Breadcrumbs into a JSON object in reverse order.
 data Context
   = Empty
-  | Property Context !Text
-  | Index Context !Int
+  | Property !Text Context
+  | Index !Int Context
