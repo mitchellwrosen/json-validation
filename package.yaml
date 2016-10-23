@@ -8,8 +8,6 @@ dependencies:
 
 library:
   source-dirs: src
-  other-modules:
-    - Data.Aeson.Validation.Types
   dependencies:
     - aeson
     - containers

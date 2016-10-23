@@ -5,7 +5,6 @@
 {-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE ViewPatterns         #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 -- | JSON schema validation.
 
@@ -20,8 +19,10 @@ module Data.Aeson.Validation
   , false
     -- * Number schemas
   , number
-  , integer
+  , theNumber
   , someNumber
+  , integer
+  , theInteger
   , someInteger
     -- * String schemas
   , string
@@ -46,8 +47,6 @@ module Data.Aeson.Validation
   , anything
   , nullable
   ) where
-
-import Data.Aeson.Validation.Types
 
 import Control.Monad.Reader
 import Control.Monad.Writer  hiding ((<>))
@@ -74,18 +73,42 @@ import qualified Text.Regex.PCRE.Light as Regex
 -- $setup
 -- >>> import Test.QuickCheck.Instances ()
 -- >>> import qualified Data.Text as Text
+-- >>> :set -XNoExtendedDefaultRules
 
 --------------------------------------------------------------------------------
--- Instances
+-- Types
+
+-- | An opaque JSON 'Schema'.
+data Schema
+  = SBool
+  | STrue
+  | SFalse
+  | SNumber
+  | SInteger
+  | STheNumber !Scientific
+  | STheInteger !Integer
+  | SSomeNumber (Scientific -> Bool) !(Maybe Text) {- error msg -}
+  | SString
+  | STheString !Text
+  | SSomeString (Text -> Bool) !(Maybe Text) {- error msg -}
+  | SObject !Strict ![Field]
+  | SArray !Unique !Int {- min len -} !Int {- max len -} !Schema
+  | STuple ![Schema]
+  | SAnything
+  | SNullable !Schema
+  | SAlt !Schema !Schema
+  | SNegate !Schema
 
 -- | The 'Num' instance only defines two functions; all other 'Num' functions
 -- call 'error'.
 --
---     (1) 'fromInteger' is provided for integer-literal syntax.
+--     (1) 'fromInteger' is provided for integer literal syntax.
 --
 --         @
---         'fromInteger' n = 'someInteger' ('==' n)
+--         'fromInteger' = 'theInteger'
 --         @
+--
+--         Examples:
 --
 --         >>> schema 1 (Number 1)
 --         True
@@ -97,6 +120,8 @@ import qualified Text.Regex.PCRE.Light as Regex
 --         @
 --         'negate' . 'negate' = 'id'
 --         @
+--
+--         Examples:
 --
 --         >>> schema (negate bool) (Bool True)
 --         False
@@ -110,19 +135,30 @@ instance Num Schema where
   abs    = error "Data.Aeson.Validation: abs not implemented for Schema"
   signum = error "Data.Aeson.Validation: signum not implemented for Schema"
 
-  fromInteger n = someInteger (== n)
+  fromInteger = STheInteger
   negate = SNegate
 
--- | 'fromString' is provided for string-literal syntax.
+-- | The 'Fractional' instance only defines one function; all other 'Fractional'
+-- functions call 'error'.
 --
--- @
--- 'fromString' = 'theString' . 'Data.Text.pack'
--- @
+--     (1) 'fromRational' is provided for floating point literal syntax.
 --
--- >>> schema "foo" (String "foo")
--- True
-instance GHC.IsString Schema where
-  fromString = theString . GHC.fromString
+--         @
+--         'fromRational' = 'theNumber' . 'fromRational'
+--         @
+--
+--         Examples:
+--
+--         >>> schema 1.5 (Number 1.5)
+--         True
+--
+--         >>> schema 2.5 (Number 2.500000001)
+--         True
+instance Fractional Schema where
+  (/)   = error "Data.Aeson.Validation: (/) not implemented for Schema"
+  recip = error "Data.Aeson.Validation: recip not implemented for Schema"
+
+  fromRational = STheNumber . fromRational
 
 -- | The '<>' operator is used to create a /sum/ 'Schema' that, when applied to
 -- a 'Value', first tries the left 'Schema', then falls back on the right one if
@@ -132,16 +168,62 @@ instance GHC.IsString Schema where
 -- 'schema' (s1 '<>' s2) val = 'schema' s1 val '||' 'schema' s2 val
 -- @
 --
--- >>> schema (bool <> string) (Bool True)
--- True
+-- For 'validate', if any 'Schema's emits no violations, then no violations are
+-- emitted. Otherwise, all violations are emitted.
 --
--- >>> schema (bool <> string) (String "foo")
--- True
+-- Examples:
 --
--- >>> schema (bool <> string) (Number 1)
--- False
+-- >>> validate (bool <> string) (Bool True)
+-- []
+--
+-- >>> validate (bool <> string) (String "foo")
+-- []
+--
+-- >>> validate (bool <> string) (Number 1)
+-- ["expected a bool but found a number","expected a string but found a number"]
 instance Semigroup Schema where
   (<>) = SAlt
+
+-- | 'fromString' is provided for string literal syntax.
+--
+-- @
+-- 'fromString' = 'theString' . 'Data.Text.pack'
+-- @
+--
+-- Examples:
+--
+-- >>> schema "foo" (String "foo")
+-- True
+instance GHC.IsString Schema where
+  fromString = STheString . GHC.fromString
+
+-- | An opaque object 'Field'.
+--
+-- Create a 'Field' with '.:' or '.:?', and bundle it into a 'Schema' using
+-- 'object' or 'object''
+data Field
+  = ReqField !Text Schema
+  | OptField !Text Schema
+
+-- | Are extra properties of an object allowed?
+data Strict
+  = Strict
+  | NotStrict
+
+-- | Are duplicate elements in an array allowed?
+data Unique
+  = Unique
+  | NotUnique
+  deriving Eq
+
+-- | The validation monad.
+type Validation a = ReaderT Context (Writer (Seq Text)) a
+
+-- | Breadcrumbs into a JSON object in reverse order.
+data Context
+  = Empty
+  | Property !Text Context
+  | Index !Int Context
 
 --------------------------------------------------------------------------------
 -- Schemas
@@ -164,6 +246,12 @@ class A schema where
   --
   -- >>> schema (someNumber (> 5)) (Number 6)
   -- True
+  --
+  -- >>> validate (someNumber (> 5) "greater than 5") (Number 4)
+  -- ["failed predicate: greater than 5"]
+  --
+  -- >>> validate (someNumber (> 5)) (Number 4)
+  -- ["failed predicate"]
   someNumber :: (Scientific -> Bool) -> schema
 
   -- | Some integer 'Number'.
@@ -184,8 +272,11 @@ class A schema where
   -- >>> schema (someInteger (> 5)) (Number 6.0)
   -- True
   --
-  -- >>> schema (someInteger (> 5)) (Number 6.5)
-  -- False
+  -- >>> validate (someInteger (> 5) "greater than 5") (Number 6.5)
+  -- ["failed predicate: greater than 5"]
+  --
+  -- >>> validate (someInteger (> 5)) (Number 6.5)
+  -- ["failed predicate"]
   someInteger :: (Integer -> Bool) -> schema
 
   -- | Some 'Data.Aeson.Types.String'.
@@ -282,6 +373,21 @@ false = SFalse
 number :: Schema
 number = SNumber
 
+-- | An /approximate/ 'Data.Aeson.Types.Number', with a relative tolerance of
+-- @1^-9@ (the smaller number must be within @0.0000001%@ of the larger number).
+--
+-- You may use a floating point literal instead.
+--
+-- ==== __Examples__
+--
+-- >>> schema (theNumber 1.5) (Number 1.5)
+-- True
+--
+-- >>> schema 2.5 (Number 2.500000001)
+-- True
+theNumber :: Scientific -> Schema
+theNumber = STheNumber
+
 -- | Any integer 'Number'.
 --
 -- ==== __Examples__
@@ -294,6 +400,20 @@ number = SNumber
 integer :: Schema
 integer = SInteger
 
+-- | An exact integer 'Data.Aeson.Types.Number'.
+--
+-- You may use an integer literal instead.
+--
+-- ==== __Examples__
+--
+-- >>> schema (theInteger 1) (Number 1)
+-- True
+--
+-- >>> schema 1 (Number 2)
+-- False
+theInteger :: Integer -> Schema
+theInteger = STheInteger
+
 -- | Any 'Data.Aeson.Types.String'.
 --
 -- ==== __Examples__
@@ -303,15 +423,16 @@ integer = SInteger
 string :: Schema
 string = SString
 
--- | An exact 'Data.Aeson.Types.String'. This is what the @OverloadedStrings@
--- instance uses when making a 'Schema' from a string literal.
+-- | An exact 'Data.Aeson.Types.String'.
+--
+-- You may use a string literal instead (requires @-XOverloadedStrings@).
 --
 -- ==== __Examples__
 --
 -- >>> schema (theString "foo") (String "foo")
 -- True
 --
--- >>> schema (theString "foo") (String "bar")
+-- >>> schema "foo" (String "bar")
 -- False
 theString :: Text -> Schema
 theString = STheString
@@ -333,7 +454,6 @@ regex r = SSomeString p (Just ("matches " <> r))
 
   r' :: Regex
   r' = Regex.compile (encodeUtf8 r) [Regex.utf8]
-
 
 -- | An 'Object', possibly with additional unvalidated fields.
 --
@@ -428,10 +548,10 @@ tuple = STuple
 --
 -- ==== __Examples__
 --
--- >>> schema anything Null
+-- >>> schema anything (Bool True)
 -- True
 --
--- >>> schema anything (Bool True)
+-- >>> schema anything Null
 -- True
 anything :: Schema
 anything = SAnything
@@ -476,6 +596,8 @@ validate_ = \case
   SFalse          -> validateFalse
   SNumber         -> validateNumber
   SInteger        -> validateInteger
+  STheNumber n    -> validateTheNumber n
+  STheInteger n   -> validateTheInteger n
   SSomeNumber p s -> validateSomeNumber p s
   SString         -> validateString
   STheString s    -> validateTheString s
@@ -486,70 +608,81 @@ validate_ = \case
   SAnything       -> const ok
   SNullable s     -> validateNullable s
   SAlt s1 s2      -> validateAlt s1 s2
-  SNegate s0      ->
-    case s0 of
-      SBool           -> validateNotBool
-      STrue           -> validateNotTrue
-      SFalse          -> validateNotFalse
-      SNumber         -> validateNotNumber
-      SInteger        -> validateNotInteger
-      SSomeNumber p s -> validateNotSomeNumber p s
-      SString         -> validateNotString
-      STheString s    -> validateNotTheString s
-      SSomeString p s -> validateNotSomeString p s
-      SObject s xs    -> validateNotObject s xs
-      SArray u x y s  -> validateNotArray u x y s
-      STuple ss       -> validateNotTuple ss
-      SAnything       -> const (err "negate anything")
-      SNullable s     -> validateNotNullable s
-      SAlt s1 s2      -> validateNotAlt s1 s2
-      SNegate s       -> validate_ s
+  SNegate s0      -> case s0 of
+    SBool           -> validateNotBool
+    STrue           -> validateNotTrue
+    SFalse          -> validateNotFalse
+    SNumber         -> validateNotNumber
+    SInteger        -> validateNotInteger
+    STheNumber n    -> validateNotTheNumber n
+    STheInteger n   -> validateNotTheInteger n
+    SSomeNumber p s -> validateNotSomeNumber p s
+    SString         -> validateNotString
+    STheString s    -> validateNotTheString s
+    SSomeString p s -> validateNotSomeString p s
+    SObject s xs    -> validateNotObject s xs
+    SArray u x y s  -> validateNotArray u x y s
+    STuple ss       -> validateNotTuple ss
+    SAnything       -> const (err "negate anything")
+    SNullable s     -> validateNotNullable s
+    SAlt s1 s2      -> validateNotAlt s1 s2
+    SNegate s       -> validate_ s
 
 validateBool :: Value -> Validation ()
 validateBool = \case
   Bool _ -> ok
-  v      -> mismatch "a bool" (valType v)
+  v -> mismatch "a bool" (valType v)
 
 validateTrue :: Value -> Validation ()
 validateTrue = \case
   Bool b -> unless b (mismatch "true" "false")
-  v      -> mismatch "true" (valType v)
+  v -> mismatch "true" (valType v)
 
 validateFalse :: Value -> Validation ()
 validateFalse = \case
   Bool b -> when b (mismatch "false" "true")
-  v      -> mismatch "false" (valType v)
+  v -> mismatch "false" (valType v)
 
 validateNumber :: Value -> Validation ()
 validateNumber = \case
   Number _ -> ok
-  v        -> mismatch "a number" (valType v)
+  v -> mismatch "a number" (valType v)
 
 validateInteger :: Value -> Validation ()
 validateInteger = \case
   Number n -> unless (isInteger n) (mismatch "an integer" (tshow n))
-  v        -> mismatch "an integer" (valType v)
+  v -> mismatch "an integer" (valType v)
+
+validateTheNumber :: Scientific -> Value -> Validation ()
+validateTheNumber n = \case
+  Number m -> unless (isclose n m) (mismatch (tshow n) (tshow m))
+  v -> mismatch (tshow n) (valType v)
+
+validateTheInteger :: Integer -> Value -> Validation ()
+validateTheInteger n = \case
+  Number m -> unless (fromInteger n == m) (mismatch (tshow n) (tshow m))
+  v -> mismatch (tshow n) (valType v)
 
 validateSomeNumber
   :: (Scientific -> Bool) -> Maybe Text -> Value -> Validation ()
 validateSomeNumber p msg = \case
   Number n -> unless (p n) (failedPredicate msg)
-  v        -> mismatch "a number" (valType v)
+  v -> mismatch "a number" (valType v)
 
 validateString :: Value -> Validation ()
 validateString = \case
   String _ -> ok
-  v        -> mismatch "a string" (valType v)
+  v -> mismatch "a string" (valType v)
 
 validateTheString :: Text -> Value -> Validation ()
 validateTheString s = \case
   String s' -> unless (s == s') (mismatch (tshow s) (tshow s'))
-  v         -> mismatch (tshow s) (valType v)
+  v -> mismatch (tshow s) (valType v)
 
 validateSomeString :: (Text -> Bool) -> Maybe Text -> Value -> Validation ()
 validateSomeString p msg = \case
   String s -> unless (p s) (failedPredicate msg)
-  v        -> mismatch "a string" (valType v)
+  v -> mismatch "a string" (valType v)
 
 validateObject :: Strict -> [Field] -> Value -> Validation ()
 validateObject s xs = \case
@@ -614,7 +747,6 @@ validateArray uniq x y sch = \case
     toSet :: Vector Value -> HashSet Value
     toSet = Vector.foldr' HashSet.insert mempty
 
-
 validateTuple :: [Schema] -> Value -> Validation ()
 validateTuple ss0 = \case
   Array v0 -> go 0 ss0 (toList v0)
@@ -643,23 +775,23 @@ validateNotBool :: Value -> Validation ()
 validateNotBool v =
   case v of
     Bool b -> mismatch "anything but a bool" (if b then "true" else "false")
-    _      -> ok
+    _ -> ok
 
 validateNotTrue :: Value -> Validation ()
 validateNotTrue = \case
   Bool True -> mismatch "anything but true" "true"
-  _         -> ok
+  _ -> ok
 
 validateNotFalse :: Value -> Validation ()
 validateNotFalse = \case
   Bool False -> mismatch "anything but false" "false"
-  _          -> ok
+  _ -> ok
 
 validateNotNumber :: Value -> Validation ()
 validateNotNumber v =
   case v of
     Number n -> mismatch "anything but a number" (tshow n)
-    _        -> ok
+    _ -> ok
 
 validateNotInteger :: Value -> Validation ()
 validateNotInteger = \case
@@ -673,6 +805,19 @@ validateNotInteger = \case
     nope = error "impossible"
   _ -> ok
 
+validateNotTheNumber :: Scientific -> Value -> Validation ()
+validateNotTheNumber n v =
+  case v of
+    Number m | isclose n m -> mismatch ("anything but " <> tshow n) (tshow m)
+    _ -> ok
+
+validateNotTheInteger :: Integer -> Value -> Validation ()
+validateNotTheInteger n v =
+  case v of
+    Number m | fromInteger n == m ->
+      mismatch ("anything but " <> tshow n) (tshow m)
+    _ -> ok
+
 validateNotSomeNumber
   :: (Scientific -> Bool) -> Maybe Text -> Value -> Validation ()
 validateNotSomeNumber p msg = \case
@@ -683,7 +828,7 @@ validateNotString :: Value -> Validation ()
 validateNotString v =
   case v of
     String s -> mismatch "anything but a string" (tshow s)
-    _        -> ok
+    _ -> ok
 
 validateNotTheString :: Text -> Value -> Validation ()
 validateNotTheString s = \case
@@ -785,3 +930,6 @@ valType = \case
 
 tshow :: Show a => a -> Text
 tshow = Text.pack . show
+
+isclose :: Scientific -> Scientific -> Bool
+isclose n m = abs (n-m) <= (1e-9) * max (abs n) (abs m)
