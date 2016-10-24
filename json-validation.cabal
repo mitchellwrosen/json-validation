@@ -16,6 +16,7 @@ library
       base
     , aeson
     , containers
+    , hashable
     , microlens
     , mtl
     , pcre-light
@@ -50,6 +51,7 @@ test-suite spec
   ghc-options: -Wall
   build-depends:
       base
+    , aeson
     , hspec
     , json-validation
   other-modules:

@@ -1,9 +1,12 @@
 {-# LANGUAGE BangPatterns         #-}
+{-# LANGUAGE DeriveAnyClass       #-}
+{-# LANGUAGE DeriveGeneric        #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE InstanceSigs         #-}
 {-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE ViewPatterns         #-}
 
 -- | JSON schema validation.
@@ -31,6 +34,7 @@ module Data.Aeson.Validation
   , regex
     -- * Object schemas
   , Field
+  , Path
   , object
   , object'
   , (.:)
@@ -51,7 +55,9 @@ module Data.Aeson.Validation
 import Control.Monad.Reader
 import Control.Monad.Writer  hiding ((<>))
 import Data.Aeson            (Value(..))
+import Data.Bits             (xor)
 import Data.Foldable
+import Data.Hashable         (Hashable(..))
 import Data.HashMap.Strict   (HashMap)
 import Data.HashSet          (HashSet)
 import Data.Scientific
@@ -60,6 +66,7 @@ import Data.Sequence         (Seq)
 import Data.Text             (Text)
 import Data.Text.Encoding    (encodeUtf8)
 import Data.Vector           (Vector)
+import GHC.Generics          (Generic)
 import Lens.Micro            hiding (set)
 import Text.Regex.PCRE.Light (Regex)
 
@@ -71,9 +78,14 @@ import qualified GHC.Exts              as GHC
 import qualified Text.Regex.PCRE.Light as Regex
 
 -- $setup
+-- >>> import Data.Aeson ((.=))
 -- >>> import Test.QuickCheck.Instances ()
 -- >>> import qualified Data.Text as Text
+-- >>> :set -XFlexibleContexts
+-- >>> :set -XGADTs
 -- >>> :set -XNoExtendedDefaultRules
+-- >>> :set -XOverloadedLists
+-- >>> :set -XOverloadedStrings
 
 --------------------------------------------------------------------------------
 -- Types
@@ -91,7 +103,7 @@ data Schema
   | SString
   | STheString !Text
   | SSomeString (Text -> Bool) !(Maybe Text) {- error msg -}
-  | SObject !Strict ![Field]
+  | SObject !Strict ![ShallowField]
   | SArray !Unique !Int {- min len -} !Int {- max len -} !Schema
   | STuple ![Schema]
   | SAnything
@@ -102,7 +114,7 @@ data Schema
 -- | The 'Num' instance only defines two functions; all other 'Num' functions
 -- call 'error'.
 --
---     (1) 'fromInteger' is provided for integer literal syntax.
+--     (1) 'fromInteger' is provided for integer-literal syntax.
 --
 --         @
 --         'fromInteger' = 'theInteger'
@@ -141,7 +153,7 @@ instance Num Schema where
 -- | The 'Fractional' instance only defines one function; all other 'Fractional'
 -- functions call 'error'.
 --
---     (1) 'fromRational' is provided for floating point literal syntax.
+--     (1) 'fromRational' is provided for floating point-literal syntax.
 --
 --         @
 --         'fromRational' = 'theNumber' . 'fromRational'
@@ -184,7 +196,7 @@ instance Fractional Schema where
 instance Semigroup Schema where
   (<>) = SAlt
 
--- | 'fromString' is provided for string literal syntax.
+-- | 'fromString' is provided for string-literal syntax.
 --
 -- @
 -- 'fromString' = 'theString' . 'Data.Text.pack'
@@ -197,29 +209,105 @@ instance Semigroup Schema where
 instance GHC.IsString Schema where
   fromString = STheString . GHC.fromString
 
+data Demand
+  = Opt
+  | Req
+  deriving Eq
+
+instance Hashable Demand where
+  hash Opt = 0
+  hash Req = 1
+
+  hashWithSalt s x = s * 16777619 `xor` hash x
+
 -- | An opaque object 'Field'.
 --
 -- Create a 'Field' with '.:' or '.:?', and bundle it into a 'Schema' using
 -- 'object' or 'object''
 data Field
-  = ReqField !Text Schema
-  | OptField !Text Schema
+  = Field !Demand !Path !Schema
 
--- | Are extra properties of an object allowed?
+data ShallowField = ShallowField
+  { fieldDemand :: !Demand
+  , fieldKey    :: !Text
+  , fieldSchema :: !Schema
+  }
+
+-- | An arbitrarily deep non-empty 'Path' into an 'Object', created with either
+-- string-literal or list-literal syntax.
+--
+-- Beware: the 'GHC.IsList' instance is partial; @[]@ is not allowed and will
+-- call 'error'.
+--
+-- ==== __Examples__
+--
+-- >>> "foo" :: Path
+-- ["foo"]
+--
+-- >>> ["foo", "bar"] :: Path
+-- ["foo","bar"]
+--
+-- >>> [] :: Path
+-- *** Exception: Data.Aeson.Validation.Path.fromList: empty list
+data Path
+  = Link !Text !Path
+  | Leaf !Text
+  deriving (Eq, Ord)
+
+instance Show Path where
+  show = show . GHC.toList
+
+-- | A singleton 'Path'.
+instance GHC.IsString Path where
+  fromString = Leaf . GHC.fromString
+
+-- | 'Path's created with @[]@ syntax must be non-empty.
+instance GHC.IsList Path where
+  type Item Path = Text
+
+  fromList :: [GHC.Item Path] -> Path
+  fromList [] =
+    errorWithoutStackTrace "Data.Aeson.Validation.Path.fromList: empty list"
+  fromList xs0 = go xs0
+   where
+    go :: [Text] -> Path
+    go []     = error "impossible"
+    go [x]    = Leaf x
+    go (x:xs) = Link x (go xs)
+
+  toList :: Path -> [GHC.Item Path]
+  toList (Leaf x)    = [x]
+  toList (Link x xs) = x : GHC.toList xs
+
+-- A FieldMap is a temporary data structure used during the conversion from
+-- [Field] to [ShallowField].
+newtype FieldMap
+  = FieldMap
+      { unFieldMap :: HashMap (Pair Demand Text) (Pair FieldMap [Schema]) }
+
+instance Monoid FieldMap where
+  mempty = FieldMap mempty
+  mappend (FieldMap x) (FieldMap y) = FieldMap (mappend x y)
+
+data Pair a b
+  = Pair !a !b
+  deriving (Eq, Generic, Hashable)
+
+-- Are extra properties of an object allowed?
 data Strict
   = Strict
   | NotStrict
 
--- | Are duplicate elements in an array allowed?
+-- Are duplicate elements in an array allowed?
 data Unique
   = Unique
   | NotUnique
   deriving Eq
 
--- | The validation monad.
+-- The validation monad.
 type Validation a = ReaderT Context (Writer (Seq Text)) a
 
--- | Breadcrumbs into a JSON object in reverse order.
+-- Breadcrumbs into a JSON object in reverse order.
 data Context
   = Empty
   | Property !Text Context
@@ -378,6 +466,17 @@ number = SNumber
 --
 -- You may use a floating point literal instead.
 --
+-- Here is how you'd implement 'theNumber' using 'someNumber', in case you want
+-- to use a different tolerance:
+--
+-- @
+-- 'theNumber' :: 'Scientific' -> 'Schema'
+-- 'theNumber' n = 'someNumber' (isClose n)
+--   where
+--     isClose :: 'Scientific' -> 'Scientific' -> 'Bool'
+--     isClose a b = 'abs' (a-b) '<=' 1e-9 * 'max' ('abs' a) ('abs' b)
+-- @
+--
 -- ==== __Examples__
 --
 -- >>> schema (theNumber 1.5) (Number 1.5)
@@ -455,27 +554,110 @@ regex r = SSomeString p (Just ("matches " <> r))
   r' :: Regex
   r' = Regex.compile (encodeUtf8 r) [Regex.utf8]
 
--- | An 'Object', possibly with additional unvalidated fields.
+-- | An 'Object', possibly with additional fields.
 --
 -- To match any 'Object', use @'object' []@.
+--
+-- ==== __Examples__
+--
+-- >>> let fields = ["foo" .: number]
+-- >>> let values = ["foo" .= Number 1, "bar" .= Bool True]
+-- >>> schema (object fields) (Object values)
+-- True
+--
+-- >>> let fields = [["foo", "bar"] .: number]
+-- >>> let values = ["foo" .= Object ["bar" .= Number 1]]
+-- >>> schema (object fields) (Object values)
+-- True
 object :: [Field] -> Schema
-object = SObject NotStrict
+object xs = SObject NotStrict (flatten NotStrict xs)
 
 -- | An 'Object' with no additional fields.
 --
 -- The @'@ mark means \"strict\" as in @foldl'@, because 'object'' matches
 -- 'Object's more strictly than 'object'.
+--
+-- ==== __Examples__
+--
+-- >>> let fields = ["foo" .: number]
+-- >>> let values = ["foo" .= Number 1]
+-- >>> schema (object' fields) (Object values)
+-- True
+--
+-- >>> let fields = ["foo" .: number]
+-- >>> let values = ["foo" .= Number 1, "bar" .= Bool True]
+-- >>> schema (object' fields) (Object values)
+-- False
+--
+-- >>> let fields = [["foo", "bar"] .: number]
+-- >>> let values = ["foo" .= Object ["bar" .= Number 1]]
+-- >>> schema (object' fields) (Object values)
+-- True
+--
+-- >>> let fields = [["foo", "bar"] .: number]
+-- >>> let values = ["foo" .= Object ["bar" .= Number 1], "baz" .= Bool True]
+-- >>> schema (object' fields) (Object values)
+-- False
 object' :: [Field] -> Schema
-object' = SObject Strict
+object' xs = SObject Strict (flatten Strict xs)
+
+flatten :: Strict -> [Field] -> [ShallowField]
+flatten s xs = mapFields (foldr step mempty xs)
+ where
+  step
+    :: Field
+    -> HashMap (Pair Demand Text) (Pair FieldMap [Schema])
+    -> HashMap (Pair Demand Text) (Pair FieldMap [Schema])
+  step (Field req path sch) = go path
+   where
+    go :: Path
+       -> HashMap (Pair Demand Text) (Pair FieldMap [Schema])
+       -> HashMap (Pair Demand Text) (Pair FieldMap [Schema])
+    go = \case
+      Leaf key ->
+        HashMap.alter
+          (\case
+            Nothing -> Just (Pair mempty [sch])
+            Just (Pair m schs) -> Just (Pair m (sch : schs)))
+          (Pair req key)
+      Link key path' ->
+        HashMap.alter
+          (\case
+            Nothing -> val mempty []
+            Just (Pair m schs) -> val m schs)
+          (Pair req key)
+       where
+        val :: FieldMap -> [Schema] -> Maybe (Pair FieldMap [Schema])
+        val m ss = Just (Pair (FieldMap (go path' (unFieldMap m))) ss)
+
+  mapFields
+    :: HashMap (Pair Demand Text) (Pair FieldMap [Schema]) -> [ShallowField]
+  mapFields = HashMap.toList >=> go
+   where
+    go :: (Pair Demand Text, Pair FieldMap [Schema]) -> [ShallowField]
+    go (Pair req key, Pair m ss) =
+      case mapFields (unFieldMap m) of
+        [] -> fields
+        fs -> objField fs : fields
+     where
+      fields :: [ShallowField]
+      fields = map (ShallowField req key) ss
+
+      objField :: [ShallowField] -> ShallowField
+      objField fs = ShallowField
+        { fieldDemand = req
+        , fieldKey    = key
+        , fieldSchema = SObject s fs
+        }
 
 -- | A required 'Field'.
-(.:) :: Text -> Schema -> Field
-(.:) = ReqField
+(.:) :: Path -> Schema -> Field
+(.:) = Field Req
 infixr 5 .:
 
 -- | An optional 'Field'.
-(.:?) :: Text -> Schema -> Field
-(.:?) = OptField
+(.:?) :: Path -> Schema -> Field
+(.:?) = Field Opt
 infixr 5 .:?
 
 -- | A "homogenous" 'Array' of any size.
@@ -684,7 +866,7 @@ validateSomeString p msg = \case
   String s -> unless (p s) (failedPredicate msg)
   v -> mismatch "a string" (valType v)
 
-validateObject :: Strict -> [Field] -> Value -> Validation ()
+validateObject :: Strict -> [ShallowField] -> Value -> Validation ()
 validateObject s xs = \case
   Object obj ->
     case s of
@@ -692,26 +874,22 @@ validateObject s xs = \case
       Strict    -> validateObject' xs obj
   v -> mismatch "an object" (valType v)
 
-validateObject' :: [Field] -> HashMap Text Value -> Validation ()
+validateObject' :: [ShallowField] -> HashMap Text Value -> Validation ()
 validateObject' [] obj =
   case HashMap.keys obj of
     [] -> ok
-    ks -> err ("extra fields: " <> Text.intercalate ", " ks)
+    ks -> err ("extra fields: " <> Text.intercalate ", " (map tshow ks))
 validateObject' (x:xs) obj = do
   validateField obj x
   validateObject' xs (HashMap.delete (fieldKey x) obj)
- where
-  fieldKey :: Field -> Text
-  fieldKey (ReqField s _) = s
-  fieldKey (OptField s _) = s
 
-validateField :: HashMap Text Value -> Field -> Validation ()
+validateField :: HashMap Text Value -> ShallowField -> Validation ()
 validateField obj = \case
-  ReqField key s ->
+  ShallowField Req key s ->
     case HashMap.lookup key obj of
-      Nothing -> err ("missing field" <> key)
+      Nothing -> err ("missing field " <> tshow key)
       Just v  -> local (Property key) (validate_ s v)
-  OptField key s ->
+  ShallowField Opt key s ->
     case HashMap.lookup key obj of
       Nothing -> ok
       Just v  -> local (Property key) (validate_ s v)
@@ -840,7 +1018,7 @@ validateNotSomeString p msg = \case
   String s | p s -> passedPredicate msg
   _ -> ok
 
-validateNotObject :: Strict -> [Field] -> Value -> Validation ()
+validateNotObject :: Strict -> [ShallowField] -> Value -> Validation ()
 validateNotObject sch xs val = do
   errs <- vlisten (validateObject sch xs val)
   when (null errs) (err "passed object schema")
@@ -932,4 +1110,4 @@ tshow :: Show a => a -> Text
 tshow = Text.pack . show
 
 isclose :: Scientific -> Scientific -> Bool
-isclose n m = abs (n-m) <= (1e-9) * max (abs n) (abs m)
+isclose n m = abs (n-m) <= 1e-9 * max (abs n) (abs m)

@@ -11,6 +11,7 @@ library:
   dependencies:
     - aeson
     - containers
+    - hashable
     - microlens
     - mtl
     - pcre-light
@@ -32,5 +33,6 @@ tests:
     main: Spec.hs
     source-dirs: test
     dependencies:
+      - aeson
       - hspec
       - json-validation
