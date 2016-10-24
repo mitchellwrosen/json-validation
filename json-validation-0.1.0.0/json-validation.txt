@@ -13,7 +13,15 @@ module Data.Aeson.Validation
 data Schema
 
 -- | Does the <a>Value</a> satisfy the <a>Schema</a>?
+--   
+--   <pre>
+--   <a>schema</a> s v = <a>null</a> (<a>validate</a> s v)
+--   </pre>
 schema :: Schema -> Value -> Bool
+
+-- | Validate a <a>Value</a> with a <a>Schema</a> and emit schema
+--   violations as <a>Text</a>.
+validate :: Schema -> Value -> [Text]
 
 -- | Any <a>Bool</a>.
 --   
@@ -70,6 +78,67 @@ false :: Schema
 --   </pre>
 number :: Schema
 
+-- | An <i>approximate</i> <a>Number</a>, with a relative tolerance of
+--   <tt>1^-9</tt> (the smaller number must be within <tt>0.0000001%</tt>
+--   of the larger number).
+--   
+--   You may use a floating point literal instead.
+--   
+--   Here is how you'd implement <a>theNumber</a> using <a>someNumber</a>,
+--   in case you want to use a different tolerance:
+--   
+--   <pre>
+--   <a>theNumber</a> :: <a>Scientific</a> -&gt; <a>Schema</a>
+--   <a>theNumber</a> n = <a>someNumber</a> (isClose n)
+--     where
+--       isClose :: <a>Scientific</a> -&gt; <a>Scientific</a> -&gt; <a>Bool</a>
+--       isClose a b = <a>abs</a> (a-b) <a>&lt;=</a> 1e-9 * <a>max</a> (<a>abs</a> a) (<a>abs</a> b)
+--   </pre>
+--   
+--   <h4><b>Examples</b></h4>
+--   
+--   <pre>
+--   &gt;&gt;&gt; schema (theNumber 1.5) (Number 1.5)
+--   True
+--   </pre>
+--   
+--   <pre>
+--   &gt;&gt;&gt; schema 2.5 (Number 2.500000001)
+--   True
+--   </pre>
+theNumber :: Scientific -> Schema
+
+-- | Some <a>Number</a>.
+--   
+--   The unexported <tt>A</tt> typeclass exists to overload
+--   <a>someNumber</a> with precicely two possible types:
+--   
+--   <pre>
+--   <a>someNumber</a> :: (<a>Scientific</a> -&gt; <a>Bool</a>) -&gt; <a>Schema</a>
+--   <a>someNumber</a> :: (<a>Scientific</a> -&gt; <a>Bool</a>) -&gt; <a>Text</a> -&gt; <a>Schema</a>
+--   </pre>
+--   
+--   The optional <a>Text</a> argument is used for error reporting if
+--   validation fails.
+--   
+--   <h4><b>Examples</b></h4>
+--   
+--   <pre>
+--   &gt;&gt;&gt; schema (someNumber (&gt; 5)) (Number 6)
+--   True
+--   </pre>
+--   
+--   <pre>
+--   &gt;&gt;&gt; validate (someNumber (&gt; 5) "greater than 5") (Number 4)
+--   ["failed predicate: greater than 5"]
+--   </pre>
+--   
+--   <pre>
+--   &gt;&gt;&gt; validate (someNumber (&gt; 5)) (Number 4)
+--   ["failed predicate"]
+--   </pre>
+someNumber :: A schema => (Scientific -> Bool) -> schema
+
 -- | Any integer <a>Number</a>.
 --   
 --   <h4><b>Examples</b></h4>
@@ -85,17 +154,35 @@ number :: Schema
 --   </pre>
 integer :: Schema
 
--- | Some <a>Number</a>.
+-- | An exact integer <a>Number</a>.
+--   
+--   You may use an integer literal instead.
 --   
 --   <h4><b>Examples</b></h4>
 --   
 --   <pre>
---   &gt;&gt;&gt; schema (someNumber (&gt; 5)) (Number 6)
+--   &gt;&gt;&gt; schema (theInteger 1) (Number 1)
 --   True
 --   </pre>
-someNumber :: (Scientific -> Bool) -> Schema
+--   
+--   <pre>
+--   &gt;&gt;&gt; schema 1 (Number 2)
+--   False
+--   </pre>
+theInteger :: Integer -> Schema
 
 -- | Some integer <a>Number</a>.
+--   
+--   The unexported <tt>A</tt> typeclass exists to overload
+--   <a>someInteger</a> with precicely two possible types:
+--   
+--   <pre>
+--   <a>someInteger</a> :: (<a>Integer</a> -&gt; <a>Bool</a>) -&gt; <a>Schema</a>
+--   <a>someInteger</a> :: (<a>Integer</a> -&gt; <a>Bool</a>) -&gt; <a>Text</a> -&gt; <a>Schema</a>
+--   </pre>
+--   
+--   The optional <a>Text</a> argument is used for error reporting if
+--   validation fails.
 --   
 --   <h4><b>Examples</b></h4>
 --   
@@ -105,10 +192,15 @@ someNumber :: (Scientific -> Bool) -> Schema
 --   </pre>
 --   
 --   <pre>
---   &gt;&gt;&gt; schema (someInteger (&gt; 5)) (Number 6.5)
---   False
+--   &gt;&gt;&gt; validate (someInteger (&gt; 5) "greater than 5") (Number 6.5)
+--   ["failed predicate: greater than 5"]
 --   </pre>
-someInteger :: (Integer -> Bool) -> Schema
+--   
+--   <pre>
+--   &gt;&gt;&gt; validate (someInteger (&gt; 5)) (Number 6.5)
+--   ["failed predicate"]
+--   </pre>
+someInteger :: A schema => (Integer -> Bool) -> schema
 
 -- | Any <a>String</a>.
 --   
@@ -120,8 +212,10 @@ someInteger :: (Integer -> Bool) -> Schema
 --   </pre>
 string :: Schema
 
--- | An exact <a>String</a>. This is what the <tt>OverloadedStrings</tt>
---   instance uses when making a <a>Schema</a> from a string literal.
+-- | An exact <a>String</a>.
+--   
+--   You may use a string literal instead (requires
+--   <tt>-XOverloadedStrings</tt>).
 --   
 --   <h4><b>Examples</b></h4>
 --   
@@ -131,12 +225,23 @@ string :: Schema
 --   </pre>
 --   
 --   <pre>
---   &gt;&gt;&gt; schema (theString "foo") (String "bar")
+--   &gt;&gt;&gt; schema "foo" (String "bar")
 --   False
 --   </pre>
 theString :: Text -> Schema
 
 -- | Some <a>String</a>.
+--   
+--   The unexported <tt>A</tt> typeclass exists to overload
+--   <a>someString</a> with precicely two possible types:
+--   
+--   <pre>
+--   <a>someString</a> :: (<a>Text</a> -&gt; <a>Bool</a>) -&gt; <a>Schema</a>
+--   <a>someString</a> :: (<a>Text</a> -&gt; <a>Bool</a>) -&gt; <a>Text</a> -&gt; <a>Schema</a>
+--   </pre>
+--   
+--   The optional <a>Text</a> argument is used for error reporting if
+--   validation fails.
 --   
 --   <h4><b>Examples</b></h4>
 --   
@@ -149,7 +254,7 @@ theString :: Text -> Schema
 --   &gt;&gt;&gt; schema (someString (\s -&gt; Text.length s &gt; 5)) (String "foo")
 --   False
 --   </pre>
-someString :: (Text -> Bool) -> Schema
+someString :: A schema => (Text -> Bool) -> schema
 
 -- | A <a>String</a> that matches a regular expression.
 --   
@@ -172,9 +277,53 @@ regex :: Text -> Schema
 --   a <a>Schema</a> using <a>object</a> or <a>object'</a>
 data Field
 
--- | An <a>Object</a>, possibly with additional unvalidated fields.
+-- | An arbitrarily deep non-empty <a>Path</a> into an <a>Object</a>,
+--   created with either string-literal or list-literal syntax.
+--   
+--   Beware: the <a>IsList</a> instance is partial; <tt>[]</tt> is not
+--   allowed and will call <a>error</a>.
+--   
+--   <h4><b>Examples</b></h4>
+--   
+--   <pre>
+--   &gt;&gt;&gt; "foo" :: Path
+--   ["foo"]
+--   </pre>
+--   
+--   <pre>
+--   &gt;&gt;&gt; ["foo", "bar"] :: Path
+--   ["foo","bar"]
+--   </pre>
+--   
+--   <pre>
+--   &gt;&gt;&gt; [] :: Path
+--   *** Exception: Data.Aeson.Validation.Path.fromList: empty list
+--   </pre>
+data Path
+
+-- | An <a>Object</a>, possibly with additional fields.
 --   
 --   To match any <a>Object</a>, use <tt><a>object</a> []</tt>.
+--   
+--   <h4><b>Examples</b></h4>
+--   
+--   <pre>
+--   &gt;&gt;&gt; let fields = ["foo" .: number]
+--   
+--   &gt;&gt;&gt; let values = ["foo" .= Number 1, "bar" .= Bool True]
+--   
+--   &gt;&gt;&gt; schema (object fields) (Object values)
+--   True
+--   </pre>
+--   
+--   <pre>
+--   &gt;&gt;&gt; let fields = [["foo", "bar"] .: number]
+--   
+--   &gt;&gt;&gt; let values = ["foo" .= Object ["bar" .= Number 1]]
+--   
+--   &gt;&gt;&gt; schema (object fields) (Object values)
+--   True
+--   </pre>
 object :: [Field] -> Schema
 
 -- | An <a>Object</a> with no additional fields.
@@ -182,14 +331,52 @@ object :: [Field] -> Schema
 --   The <tt>'</tt> mark means "strict" as in <tt>foldl'</tt>, because
 --   <a>object'</a> matches <a>Object</a>s more strictly than
 --   <a>object</a>.
+--   
+--   <h4><b>Examples</b></h4>
+--   
+--   <pre>
+--   &gt;&gt;&gt; let fields = ["foo" .: number]
+--   
+--   &gt;&gt;&gt; let values = ["foo" .= Number 1]
+--   
+--   &gt;&gt;&gt; schema (object' fields) (Object values)
+--   True
+--   </pre>
+--   
+--   <pre>
+--   &gt;&gt;&gt; let fields = ["foo" .: number]
+--   
+--   &gt;&gt;&gt; let values = ["foo" .= Number 1, "bar" .= Bool True]
+--   
+--   &gt;&gt;&gt; schema (object' fields) (Object values)
+--   False
+--   </pre>
+--   
+--   <pre>
+--   &gt;&gt;&gt; let fields = [["foo", "bar"] .: number]
+--   
+--   &gt;&gt;&gt; let values = ["foo" .= Object ["bar" .= Number 1]]
+--   
+--   &gt;&gt;&gt; schema (object' fields) (Object values)
+--   True
+--   </pre>
+--   
+--   <pre>
+--   &gt;&gt;&gt; let fields = [["foo", "bar"] .: number]
+--   
+--   &gt;&gt;&gt; let values = ["foo" .= Object ["bar" .= Number 1], "baz" .= Bool True]
+--   
+--   &gt;&gt;&gt; schema (object' fields) (Object values)
+--   False
+--   </pre>
 object' :: [Field] -> Schema
 
 -- | A required <a>Field</a>.
-(.:) :: Text -> Schema -> Field
+(.:) :: Path -> Schema -> Field
 infixr 5 .:
 
 -- | An optional <a>Field</a>.
-(.:?) :: Text -> Schema -> Field
+(.:?) :: Path -> Schema -> Field
 infixr 5 .:?
 
 -- | A "homogenous" <a>Array</a> of any size.
@@ -281,12 +468,12 @@ tuple :: [Schema] -> Schema
 --   <h4><b>Examples</b></h4>
 --   
 --   <pre>
---   &gt;&gt;&gt; schema anything Null
+--   &gt;&gt;&gt; schema anything (Bool True)
 --   True
 --   </pre>
 --   
 --   <pre>
---   &gt;&gt;&gt; schema anything (Bool True)
+--   &gt;&gt;&gt; schema anything Null
 --   True
 --   </pre>
 anything :: Schema
@@ -311,6 +498,21 @@ anything :: Schema
 --   True
 --   </pre>
 nullable :: Schema -> Schema
-instance Data.Semigroup.Semigroup Data.Aeson.Validation.Schema
+instance GHC.Classes.Eq Data.Aeson.Validation.Unique
+instance (Data.Hashable.Class.Hashable a, Data.Hashable.Class.Hashable b) => Data.Hashable.Class.Hashable (Data.Aeson.Validation.Pair a b)
+instance GHC.Generics.Generic (Data.Aeson.Validation.Pair a b)
+instance (GHC.Classes.Eq a, GHC.Classes.Eq b) => GHC.Classes.Eq (Data.Aeson.Validation.Pair a b)
+instance GHC.Classes.Ord Data.Aeson.Validation.Path
+instance GHC.Classes.Eq Data.Aeson.Validation.Path
+instance GHC.Classes.Eq Data.Aeson.Validation.Demand
 instance GHC.Num.Num Data.Aeson.Validation.Schema
+instance GHC.Real.Fractional Data.Aeson.Validation.Schema
+instance Data.Semigroup.Semigroup Data.Aeson.Validation.Schema
 instance Data.String.IsString Data.Aeson.Validation.Schema
+instance Data.Hashable.Class.Hashable Data.Aeson.Validation.Demand
+instance GHC.Show.Show Data.Aeson.Validation.Path
+instance Data.String.IsString Data.Aeson.Validation.Path
+instance GHC.Exts.IsList Data.Aeson.Validation.Path
+instance GHC.Base.Monoid Data.Aeson.Validation.FieldMap
+instance Data.Aeson.Validation.A Data.Aeson.Validation.Schema
+instance a ~ Data.Text.Internal.Text => Data.Aeson.Validation.A (a -> Data.Aeson.Validation.Schema)
