@@ -11,5 +11,6 @@ Of these, this library is most similar to `json-schema`, in that it is not an im
 
 ## TODOs
 
-- More tests
+- More tests, better tests
+- Much better (structured?) error messages, more accurate contexts (e.g. "expected nullable bool")
 - Steal some pre-defined formats from http://json-schema.org/latest/json-schema-validation.html#anchor104

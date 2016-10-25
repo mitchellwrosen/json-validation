@@ -3,11 +3,31 @@ version: 0.1.0.0
 
 ghc-options: -Wall
 
+default-extensions:
+  - BangPatterns
+  - DeriveAnyClass
+  - DeriveDataTypeable
+  - DeriveFoldable
+  - DeriveGeneric
+  - FlexibleInstances
+  - GADTs
+  - InstanceSigs
+  - LambdaCase
+  - MultiParamTypeClasses
+  - OverloadedLists
+  - OverloadedStrings
+  - StandaloneDeriving
+  - TupleSections
+  - TypeFamilies
+  - ViewPatterns
+
 dependencies:
   - base
 
 library:
   source-dirs: src
+  other-modules:
+    - Data.Aeson.Validation.Internal
   dependencies:
     - aeson
     - containers
@@ -32,8 +52,25 @@ tests:
 
   spec:
     main: Spec.hs
-    source-dirs: test
+    source-dirs:
+      # Add src/ as a source dir rather than depend on the library so we can
+      # test functions in the .Internal modules without exporting them.
+      # Unfortunately, this means we have to duplicate all of its dependencies.
+      - src
+      - test
     dependencies:
       - aeson
       - hspec
-      - json-validation
+      - QuickCheck
+      - quickcheck-text
+      - scientific
+      - text
+      - uniplate
+      # Inherited from library
+      - containers
+      - hashable
+      - microlens
+      - mtl
+      - pcre-light
+      - unordered-containers
+      - vector

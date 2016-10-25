@@ -11,6 +11,7 @@ cabal-version:  >= 1.10
 library
   hs-source-dirs:
       src
+  default-extensions: BangPatterns DeriveAnyClass DeriveDataTypeable DeriveFoldable DeriveGeneric FlexibleInstances GADTs InstanceSigs LambdaCase MultiParamTypeClasses OverloadedLists OverloadedStrings StandaloneDeriving TupleSections TypeFamilies ViewPatterns
   ghc-options: -Wall
   build-depends:
       base
@@ -27,6 +28,8 @@ library
     , vector
   exposed-modules:
       Data.Aeson.Validation
+  other-modules:
+      Data.Aeson.Validation.Internal
   default-language: Haskell2010
 
 test-suite doctest
@@ -34,6 +37,7 @@ test-suite doctest
   main-is: DocTest.hs
   hs-source-dirs:
       test
+  default-extensions: BangPatterns DeriveAnyClass DeriveDataTypeable DeriveFoldable DeriveGeneric FlexibleInstances GADTs InstanceSigs LambdaCase MultiParamTypeClasses OverloadedLists OverloadedStrings StandaloneDeriving TupleSections TypeFamilies ViewPatterns
   ghc-options: -Wall
   build-depends:
       base
@@ -48,13 +52,28 @@ test-suite spec
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   hs-source-dirs:
-      test
+      src
+    , test
+  default-extensions: BangPatterns DeriveAnyClass DeriveDataTypeable DeriveFoldable DeriveGeneric FlexibleInstances GADTs InstanceSigs LambdaCase MultiParamTypeClasses OverloadedLists OverloadedStrings StandaloneDeriving TupleSections TypeFamilies ViewPatterns
   ghc-options: -Wall
   build-depends:
       base
     , aeson
     , hspec
-    , json-validation
+    , QuickCheck
+    , quickcheck-text
+    , scientific
+    , text
+    , uniplate
+    , containers
+    , hashable
+    , microlens
+    , mtl
+    , pcre-light
+    , unordered-containers
+    , vector
   other-modules:
+      Data.Aeson.Validation
+      Data.Aeson.Validation.Internal
       DocTest
   default-language: Haskell2010
