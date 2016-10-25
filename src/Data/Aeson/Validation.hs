@@ -1,13 +1,16 @@
-{-# LANGUAGE BangPatterns         #-}
-{-# LANGUAGE DeriveAnyClass       #-}
-{-# LANGUAGE DeriveGeneric        #-}
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE GADTs                #-}
-{-# LANGUAGE InstanceSigs         #-}
-{-# LANGUAGE LambdaCase           #-}
-{-# LANGUAGE OverloadedStrings    #-}
-{-# LANGUAGE TypeFamilies         #-}
-{-# LANGUAGE ViewPatterns         #-}
+{-# LANGUAGE BangPatterns          #-}
+{-# LANGUAGE DeriveAnyClass        #-}
+{-# LANGUAGE DeriveDataTypeable    #-}
+{-# LANGUAGE DeriveFoldable        #-}
+{-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE InstanceSigs          #-}
+{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE ViewPatterns          #-}
 
 -- | JSON schema validation.
 
@@ -53,22 +56,24 @@ module Data.Aeson.Validation
   ) where
 
 import Control.Monad.Reader
-import Control.Monad.Writer  hiding ((<>))
-import Data.Aeson            (Value(..))
-import Data.Bits             (xor)
+import Control.Monad.Writer          hiding ((<>))
+import Data.Aeson                    (Value(..))
+import Data.Bits                     (xor)
 import Data.Foldable
-import Data.Hashable         (Hashable(..))
-import Data.HashMap.Strict   (HashMap)
-import Data.HashSet          (HashSet)
+import Data.Generics.Uniplate.Direct
+import Data.Hashable                 (Hashable(..))
+import Data.HashMap.Strict           (HashMap)
+import Data.HashSet                  (HashSet)
+import Data.List.NonEmpty            (NonEmpty(..), (<|))
 import Data.Scientific
 import Data.Semigroup
-import Data.Sequence         (Seq)
-import Data.Text             (Text)
-import Data.Text.Encoding    (encodeUtf8)
-import Data.Vector           (Vector)
-import GHC.Generics          (Generic)
-import Lens.Micro            hiding (set)
-import Text.Regex.PCRE.Light (Regex)
+import Data.Sequence                 (Seq)
+import Data.Text                     (Text)
+import Data.Text.Encoding            (encodeUtf8)
+import Data.Vector                   (Vector)
+import GHC.Generics                  (Generic)
+import Lens.Micro                    hiding (set)
+import Text.Regex.PCRE.Light         (Regex)
 
 import qualified Data.HashMap.Strict   as HashMap
 import qualified Data.HashSet          as HashSet
@@ -108,7 +113,7 @@ data Schema
   | STuple ![Schema]
   | SAnything
   | SNullable !Schema
-  | SAlt !Schema !Schema
+  | SAlts !(NonEmpty_ Schema)
   | SNegate !Schema
 
 -- | The 'Num' instance only defines two functions; all other 'Num' functions
@@ -194,7 +199,10 @@ instance Fractional Schema where
 -- >>> validate (bool <> string) (Number 1)
 -- ["expected a bool but found a number","expected a string but found a number"]
 instance Semigroup Schema where
-  (<>) = SAlt
+  SAlts (NE xs)      <> SAlts (NE ys) = SAlts (NE (xs <> ys))
+  SAlts (NE (x:|xs)) <> y             = SAlts (NE (x :| xs ++ [y])) -- Won't happen naturally (infixr)
+  x                  <> SAlts (NE ys) = SAlts (NE (x <| ys))
+  x                  <> y             = SAlts (NE (x :| [y]))
 
 -- | 'fromString' is provided for string-literal syntax.
 --
@@ -208,6 +216,27 @@ instance Semigroup Schema where
 -- True
 instance GHC.IsString Schema where
   fromString = STheString . GHC.fromString
+
+instance Uniplate Schema where
+  uniplate = \case
+    SBool               -> plate SBool
+    STrue               -> plate STrue
+    SFalse              -> plate SFalse
+    SNumber             -> plate SNumber
+    SInteger            -> plate SInteger
+    STheNumber  a       -> plate STheNumber  |-  a
+    STheInteger a       -> plate STheInteger |-  a
+    SSomeNumber a b     -> plate SSomeNumber |-  a |-  b
+    SString             -> plate SString
+    STheString  a       -> plate STheString  |-  a
+    SSomeString a b     -> plate SSomeString |-  a |-  b
+    SObject     a b     -> plate SObject     |-  a ||+ b
+    SArray      a b c d -> plate SArray      |-  a |-  b |- c |* d
+    STuple      a       -> plate STuple      ||* a
+    SAnything           -> plate SAnything
+    SNullable   a       -> plate SNullable   |*  a
+    SAlts       a       -> plate SAlts       |+  a
+    SNegate     a       -> plate SNegate     |*  a
 
 data Demand
   = Opt
@@ -232,6 +261,9 @@ data ShallowField = ShallowField
   , fieldKey    :: !Text
   , fieldSchema :: !Schema
   }
+
+instance Biplate ShallowField Schema where
+  biplate (ShallowField a b c) = plate ShallowField |- a |- b |* c
 
 -- | An arbitrarily deep non-empty 'Path' into an 'Object', created with either
 -- string-literal or list-literal syntax.
@@ -789,7 +821,7 @@ validate_ = \case
   STuple ss       -> validateTuple ss
   SAnything       -> const ok
   SNullable s     -> validateNullable s
-  SAlt s1 s2      -> validateAlt s1 s2
+  SAlts ss        -> validateAlts ss
   SNegate s0      -> case s0 of
     SBool           -> validateNotBool
     STrue           -> validateNotTrue
@@ -807,7 +839,7 @@ validate_ = \case
     STuple ss       -> validateNotTuple ss
     SAnything       -> const (err "negate anything")
     SNullable s     -> validateNotNullable s
-    SAlt s1 s2      -> validateNotAlt s1 s2
+    SAlts ss        -> validateNotAlts ss
     SNegate s       -> validate_ s
 
 validateBool :: Value -> Validation ()
@@ -942,12 +974,17 @@ validateTuple ss0 = \case
 validateNullable :: Schema -> Value -> Validation ()
 validateNullable s v = when (v /= Null) (validate_ s v)
 
-validateAlt :: Schema -> Schema -> Value -> Validation ()
-validateAlt s1 s2 val = do
-  errs1 <- vlisten (validate_ s1 val)
-  unless (null errs1) $ do
-    errs2 <- vlisten (validate_ s2 val)
-    unless (null errs2) (tell (errs1 <> errs2))
+validateAlts :: NonEmpty_ Schema -> Value -> Validation ()
+validateAlts (NE ss0) val = go (toList ss0)
+ where
+  go :: [Schema] -> Validation ()
+  go [] = error "impossible"
+  go [s] = validate_ s val
+  go (s:ss) = do
+    errs1 <- vlisten (validate_ s val)
+    unless (null errs1) $ do
+      errs2 <- vlisten (go ss)
+      unless (null errs2) (tell (errs1 <> errs2))
 
 validateNotBool :: Value -> Validation ()
 validateNotBool v =
@@ -1043,10 +1080,8 @@ validateNotNullable s = \case
   Null -> err "passed nullable schema"
   v    -> validate_ (negate s) v
 
-validateNotAlt :: Schema -> Schema -> Value -> Validation ()
-validateNotAlt s1 s2 val = do
-  validate_ (negate s1) val
-  validate_ (negate s2) val
+validateNotAlts :: NonEmpty_ Schema -> Value -> Validation ()
+validateNotAlts ss val = mapM_ (\s -> validate_ (negate s) val) ss
 
 -- Run a 'Validation' action in the current 'Context', capturing everything it
 -- tells.
@@ -1111,3 +1146,15 @@ tshow = Text.pack . show
 
 isclose :: Scientific -> Scientific -> Bool
 isclose n m = abs (n-m) <= 1e-9 * max (abs n) (abs m)
+
+--------------------------------------------------------------------------------
+-- Annoying newtype because I don't want to make an orphan
+-- @Biplate (NonEmpty a) a@ instance in this module.
+
+newtype NonEmpty_ a = NE (NonEmpty a)
+  deriving Foldable
+
+instance Uniplate a => Biplate (NonEmpty_ a) a where
+  biplate (NE (x :| xs)) = (str, NE . f)
+   where
+    (str, f) = plate (:|) |* x ||* xs

@@ -17,6 +17,7 @@ library:
     - pcre-light
     - scientific
     - text
+    - uniplate
     - unordered-containers
     - vector
 
