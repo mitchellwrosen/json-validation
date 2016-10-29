@@ -18,12 +18,12 @@ library
     , aeson
     , containers
     , hashable
+    , iso8601-time
     , microlens
     , mtl
     , pcre-light
     , scientific
     , text
-    , uniplate
     , unordered-containers
     , vector
   exposed-modules:
@@ -64,9 +64,9 @@ test-suite spec
     , quickcheck-text
     , scientific
     , text
-    , uniplate
     , containers
     , hashable
+    , iso8601-time
     , microlens
     , mtl
     , pcre-light

@@ -1,13 +1,12 @@
 module Data.Aeson.Validation.Internal where
 
 import Data.Bits                     (xor)
-import Data.Generics.Str
-import Data.Generics.Uniplate.Direct
 import Data.Hashable                 (Hashable(..))
 import Data.List.NonEmpty            (NonEmpty(..), (<|))
 import Data.Scientific
 import Data.Semigroup
 import Data.Text                     (Text)
+import Lens.Micro
 
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified GHC.Exts           as GHC
@@ -29,6 +28,7 @@ data Schema
   | SString
   | STheString !Text
   | SSomeString (Text -> Bool) !(Maybe Text) {- error msg -}
+  | SDateTime
   | SObject !Strict ![ShallowField]
   | SArray !Unique !Int {- min len -} !Int {- max len -} !Schema
   | STuple ![Schema]
@@ -138,33 +138,6 @@ instance Semigroup Schema where
 instance GHC.IsString Schema where
   fromString = STheString . GHC.fromString
 
-instance Uniplate Schema where
-  uniplate = \case
-    SBool               -> plate SBool
-    STrue               -> plate STrue
-    SFalse              -> plate SFalse
-    SNumber             -> plate SNumber
-    SInteger            -> plate SInteger
-    STheNumber  a       -> plate STheNumber  |-  a
-    STheInteger a       -> plate STheInteger |-  a
-    SSomeNumber a b     -> plate SSomeNumber |-  a |-  b
-    SString             -> plate SString
-    STheString  a       -> plate STheString  |-  a
-    SSomeString a b     -> plate SSomeString |-  a |-  b
-    SObject     a b     -> plate SObject     |-  a ||+ b
-    SArray      a b c d -> plate SArray      |-  a |-  b |- c |* d
-    STuple      a       -> plate STuple      ||* a
-    SAnything           -> plate SAnything
-    SNullable   a       -> plate SNullable   |*  a
-    SAlts       a       -> (nonEmptyStr a, SAlts . strNonEmpty)
-    SNegate     a       -> plate SNegate     |*  a
-   where
-    nonEmptyStr :: NonEmpty a -> Str a
-    nonEmptyStr = listStr . NonEmpty.toList
-
-    strNonEmpty :: Str a -> NonEmpty a
-    strNonEmpty = NonEmpty.fromList . strList
-
 data Demand
   = Opt
   | Req
@@ -190,8 +163,8 @@ data ShallowField = ShallowField
   , fieldSchema :: !Schema
   }
 
-instance Biplate ShallowField Schema where
-  biplate (ShallowField a b c) = plate ShallowField |- a |- b |* c
+fieldSchemaL :: Lens' ShallowField Schema
+fieldSchemaL f (ShallowField a b c) = (\c' -> ShallowField a b c') <$> f c
 
 -- | An arbitrarily deep non-empty 'Path' into an 'Object', created with either
 -- string-literal or list-literal syntax.
@@ -261,3 +234,54 @@ normalize = transform
   unAlt :: Schema -> [Schema]
   unAlt (SAlts ss) = NonEmpty.toList ss
   unAlt s = [s]
+
+-- Uniplate stuff, not enough to be worth the dependency
+
+universe :: Schema -> [Schema]
+universe = \case
+  SBool               -> [SBool]
+  STrue               -> [STrue]
+  SFalse              -> [SFalse]
+  SNumber             -> [SNumber]
+  SInteger            -> [SInteger]
+  STheNumber  a       -> [STheNumber a]
+  STheInteger a       -> [STheInteger a]
+  SSomeNumber a b     -> [SSomeNumber a b]
+  SString             -> [SString]
+  STheString  a       -> [STheString a]
+  SSomeString a b     -> [SSomeString a b]
+  SDateTime           -> [SDateTime]
+  SObject     a b     -> SObject a b : concatMap universe (map fieldSchema b)
+  SArray      a b c d -> SArray a b c d : universe d
+  STuple      a       -> STuple a : concatMap universe a
+  SAnything           -> [SAnything]
+  SNullable   a       -> SNullable a : universe a
+  SAlts       a       -> SAlts a : concatMap universe (NonEmpty.toList a)
+  SNegate     a       -> SNegate a : universe a
+
+-- Transform all 'Schema', bottom up.
+transform :: (Schema -> Schema) -> Schema -> Schema
+transform f = f . transform' (transform f)
+
+-- Transform direct children.
+transform' :: (Schema -> Schema) -> Schema -> Schema
+transform' f = \case
+  SBool               -> SBool
+  STrue               -> STrue
+  SFalse              -> SFalse
+  SNumber             -> SNumber
+  SInteger            -> SInteger
+  STheNumber  a       -> STheNumber a
+  STheInteger a       -> STheInteger a
+  SSomeNumber a b     -> SSomeNumber a b
+  SString             -> SString
+  STheString  a       -> STheString a
+  SSomeString a b     -> SSomeString a b
+  SDateTime           -> SDateTime
+  SObject     a b     -> SObject a (b & each.fieldSchemaL %~ f)
+  SArray      a b c d -> SArray a b c (f d)
+  STuple      a       -> STuple (map f a)
+  SAnything           -> SAnything
+  SNullable   a       -> SNullable (f a)
+  SAlts       a       -> SAlts (fmap f a)
+  SNegate     a       -> SNegate (f a)

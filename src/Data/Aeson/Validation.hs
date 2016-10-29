@@ -21,6 +21,7 @@ module Data.Aeson.Validation
   , theString
   , someString
   , regex
+  , datetime
     -- * Object schemas
   , Field
   , Path
@@ -44,22 +45,24 @@ module Data.Aeson.Validation
 import Data.Aeson.Validation.Internal
 
 import Control.Monad.Reader
-import Control.Monad.Writer          hiding ((<>))
-import Data.Aeson                    (Value(..))
+import Control.Monad.Writer hiding ((<>))
+import Data.Aeson (Value(..))
 import Data.Foldable
-import Data.Hashable                 (Hashable(..))
-import Data.HashMap.Strict           (HashMap)
-import Data.HashSet                  (HashSet)
-import Data.List.NonEmpty            (NonEmpty)
-import Data.Scientific
+import Data.Hashable (Hashable(..))
+import Data.HashMap.Strict (HashMap)
+import Data.HashSet (HashSet)
+import Data.List.NonEmpty (NonEmpty)
+import Data.Maybe (isJust)
+import Data.Scientific (Scientific, floatingOrInteger, isInteger)
 import Data.Semigroup
-import Data.Sequence                 (Seq)
-import Data.Text                     (Text)
-import Data.Text.Encoding            (encodeUtf8)
-import Data.Vector                   (Vector)
-import GHC.Generics                  (Generic)
-import Lens.Micro                    hiding (set)
-import Text.Regex.PCRE.Light         (Regex)
+import Data.Sequence (Seq)
+import Data.Text (Text)
+import Data.Text.Encoding (encodeUtf8)
+import Data.Time.ISO8601 (parseISO8601)
+import Data.Vector (Vector)
+import GHC.Generics (Generic)
+import Lens.Micro hiding (set)
+import Text.Regex.PCRE.Light (Regex)
 
 import qualified Data.HashMap.Strict   as HashMap
 import qualified Data.HashSet          as HashSet
@@ -340,6 +343,15 @@ regex r = SSomeString p (Just ("matches " <> r))
   r' :: Regex
   r' = Regex.compile (encodeUtf8 r) [Regex.utf8]
 
+-- | A 'Data.Aeson.Types.String' in
+-- <https://www.ietf.org/rfc/rfc3339.txt ISO 8601> format.
+--
+-- ==== __Examples__
+-- >>> schema datetime (String "2000-01-01T00:00:00.000Z")
+-- True
+datetime :: Schema
+datetime = SDateTime
+
 -- | An 'Object', possibly with additional fields.
 --
 -- To match any 'Object', use @'object' []@.
@@ -555,7 +567,8 @@ schema s v = null (validate s v)
 
 -- | Validate a 'Value' with a 'Schema' and emit schema violations as 'Text'.
 validate :: Schema -> Value -> [Text]
-validate s v = toList (execWriter (runReaderT (validate_ s v) Empty))
+validate s v =
+  toList (execWriter (runReaderT (validate_ (normalize s) v) Empty))
 
 validate_ :: Schema -> Value -> Validation ()
 validate_ = \case
@@ -570,6 +583,7 @@ validate_ = \case
   SString         -> validateString
   STheString s    -> validateTheString s
   SSomeString p s -> validateSomeString p s
+  SDateTime       -> validateDateTime
   SObject s xs    -> validateObject s xs
   SArray u x y s  -> validateArray u x y s
   STuple ss       -> validateTuple ss
@@ -588,6 +602,7 @@ validate_ = \case
     SString         -> validateNotString
     STheString s    -> validateNotTheString s
     SSomeString p s -> validateNotSomeString p s
+    SDateTime       -> validateNotDateTime
     SObject s xs    -> validateNotObject s xs
     SArray u x y s  -> validateNotArray u x y s
     STuple ss       -> validateNotTuple ss
@@ -650,6 +665,11 @@ validateTheString s = \case
 validateSomeString :: (Text -> Bool) -> Maybe Text -> Value -> Validation ()
 validateSomeString p msg = \case
   String s -> unless (p s) (failedPredicate msg)
+  v -> mismatch "a string" (valType v)
+
+validateDateTime :: Value -> Validation ()
+validateDateTime = \case
+  String s -> unless (isDateTime s) (mismatch "a datetime" (tshow s))
   v -> mismatch "a string" (valType v)
 
 validateObject :: Strict -> [ShallowField] -> Value -> Validation ()
@@ -809,6 +829,11 @@ validateNotSomeString p msg = \case
   String s | p s -> passedPredicate msg
   _ -> ok
 
+validateNotDateTime :: Value -> Validation ()
+validateNotDateTime = \case
+  String s | isDateTime s -> mismatch "anything but a datetime" (tshow s)
+  _ -> ok
+
 validateNotObject :: Strict -> [ShallowField] -> Value -> Validation ()
 validateNotObject sch xs val = do
   errs <- vlisten (validateObject sch xs val)
@@ -900,3 +925,6 @@ tshow = Text.pack . show
 
 isclose :: Scientific -> Scientific -> Bool
 isclose n m = abs (n-m) <= 1e-9 * max (abs n) (abs m)
+
+isDateTime :: Text -> Bool
+isDateTime = isJust . parseISO8601 . Text.unpack

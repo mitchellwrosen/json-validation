@@ -32,12 +32,12 @@ library:
     - aeson
     - containers
     - hashable
+    - iso8601-time
     - microlens
     - mtl
     - pcre-light
     - scientific
     - text
-    - uniplate
     - unordered-containers
     - vector
 
@@ -65,10 +65,10 @@ tests:
       - quickcheck-text
       - scientific
       - text
-      - uniplate
       # Inherited from library
       - containers
       - hashable
+      - iso8601-time
       - microlens
       - mtl
       - pcre-light

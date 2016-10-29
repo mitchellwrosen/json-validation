@@ -3,7 +3,6 @@
 import Data.Aeson (Value(..), (.=))
 import Data.Aeson.Validation
 import Data.Aeson.Validation.Internal
-import Data.Generics.Uniplate.Operations (universe)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Scientific (Scientific, base10Exponent, coefficient, scientific)
 import Data.Text (Text)
