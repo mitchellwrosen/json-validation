@@ -50,6 +50,7 @@ import Data.Foldable
 import Data.Hashable                 (Hashable(..))
 import Data.HashMap.Strict           (HashMap)
 import Data.HashSet                  (HashSet)
+import Data.List.NonEmpty            (NonEmpty)
 import Data.Scientific
 import Data.Semigroup
 import Data.Sequence                 (Seq)
@@ -62,6 +63,7 @@ import Text.Regex.PCRE.Light         (Regex)
 
 import qualified Data.HashMap.Strict   as HashMap
 import qualified Data.HashSet          as HashSet
+import qualified Data.List.NonEmpty    as NonEmpty
 import qualified Data.Text             as Text
 import qualified Data.Vector           as Vector
 import qualified Text.Regex.PCRE.Light as Regex
@@ -726,8 +728,8 @@ validateTuple ss0 = \case
 validateNullable :: Schema -> Value -> Validation ()
 validateNullable s v = when (v /= Null) (validate_ s v)
 
-validateAlts :: NonEmpty_ Schema -> Value -> Validation ()
-validateAlts (NE ss0) val = go (toList ss0)
+validateAlts :: NonEmpty Schema -> Value -> Validation ()
+validateAlts ss0 val = go (NonEmpty.toList ss0)
  where
   go :: [Schema] -> Validation ()
   go [] = error "impossible"
@@ -832,7 +834,7 @@ validateNotNullable s = \case
   Null -> err "passed nullable schema"
   v    -> validate_ (negate s) v
 
-validateNotAlts :: NonEmpty_ Schema -> Value -> Validation ()
+validateNotAlts :: NonEmpty Schema -> Value -> Validation ()
 validateNotAlts ss val = mapM_ (\s -> validate_ (negate s) val) ss
 
 -- Run a 'Validation' action in the current 'Context', capturing everything it
@@ -898,4 +900,3 @@ tshow = Text.pack . show
 
 isclose :: Scientific -> Scientific -> Bool
 isclose n m = abs (n-m) <= 1e-9 * max (abs n) (abs m)
-

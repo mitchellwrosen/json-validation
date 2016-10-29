@@ -60,12 +60,12 @@ arbitrary' = scale (`div` 2) arbitrary
 instance Arbitrary Demand where
   arbitrary = (\b -> if b then Opt else Req) <$> arbitrary
 
-instance Arbitrary a => Arbitrary (NonEmpty_ a) where
-  arbitrary = NE . NonEmpty.fromList <$> listOf1 arbitrary
-  shrink (NE xs) =
+instance Arbitrary a => Arbitrary (NonEmpty a) where
+  arbitrary = NonEmpty.fromList <$> listOf1 arbitrary
+  shrink xs =
     shrinkList shrink (NonEmpty.toList xs) >>= \case
       [] -> []
-      y:ys -> pure (NE (y :| ys))
+      y:ys -> pure (y :| ys)
 
 instance Arbitrary Schema where
   arbitrary = frequency $
@@ -114,12 +114,10 @@ instance CoArbitrary Text where
   coarbitrary t = coarbitrary (Text.unpack t)
 
 deriving instance Generic Demand
-deriving instance Generic (NonEmpty_ a)
 deriving instance Generic Schema
 deriving instance Generic ShallowField
 
 deriving instance Show Demand
-deriving instance Show a => Show (NonEmpty_ a)
 deriving instance Show Schema
 deriving instance Show ShallowField
 deriving instance Show Strict

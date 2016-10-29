@@ -1,6 +1,7 @@
 module Data.Aeson.Validation.Internal where
 
 import Data.Bits                     (xor)
+import Data.Generics.Str
 import Data.Generics.Uniplate.Direct
 import Data.Hashable                 (Hashable(..))
 import Data.List.NonEmpty            (NonEmpty(..), (<|))
@@ -33,7 +34,7 @@ data Schema
   | STuple ![Schema]
   | SAnything
   | SNullable !Schema
-  | SAlts !(NonEmpty_ Schema)
+  | SAlts !(NonEmpty Schema)
   | SNegate !Schema
 
 -- | The 'Num' instance only defines two functions; all other 'Num' functions
@@ -119,10 +120,10 @@ instance Fractional Schema where
 -- >>> validate (bool <> string) (Number 1)
 -- ["expected a bool but found a number","expected a string but found a number"]
 instance Semigroup Schema where
-  SAlts (NE xs)      <> SAlts (NE ys) = SAlts (NE (xs <> ys))
-  SAlts (NE (x:|xs)) <> y             = SAlts (NE (x :| xs ++ [y])) -- Won't happen naturally (infixr)
-  x                  <> SAlts (NE ys) = SAlts (NE (x <| ys))
-  x                  <> y             = SAlts (NE (x :| [y]))
+  SAlts xs      <> SAlts ys = SAlts (xs <> ys)
+  SAlts (x:|xs) <> y        = SAlts (x :| xs ++ [y]) -- Won't happen naturally (infixr)
+  x             <> SAlts ys = SAlts (x <| ys)
+  x             <> y        = SAlts (x :| [y])
 
 -- | 'GHC.fromString' is provided for string-literal syntax.
 --
@@ -155,8 +156,14 @@ instance Uniplate Schema where
     STuple      a       -> plate STuple      ||* a
     SAnything           -> plate SAnything
     SNullable   a       -> plate SNullable   |*  a
-    SAlts       a       -> plate SAlts       |+  a
+    SAlts       a       -> (nonEmptyStr a, SAlts . strNonEmpty)
     SNegate     a       -> plate SNegate     |*  a
+   where
+    nonEmptyStr :: NonEmpty a -> Str a
+    nonEmptyStr = listStr . NonEmpty.toList
+
+    strNonEmpty :: Str a -> NonEmpty a
+    strNonEmpty = NonEmpty.fromList . strList
 
 data Demand
   = Opt
@@ -246,23 +253,11 @@ data Unique
 normalize :: Schema -> Schema
 normalize = transform
   (\case
-    SAlts (NE ss) ->
-      SAlts (NE (NonEmpty.fromList (NonEmpty.toList ss >>= unAlt)))
+    SAlts ss ->
+      SAlts (NonEmpty.fromList (NonEmpty.toList ss >>= unAlt))
     s -> s)
  where
   -- Rip off top-level SAlts constructor
   unAlt :: Schema -> [Schema]
-  unAlt (SAlts (NE ss)) = NonEmpty.toList ss
+  unAlt (SAlts ss) = NonEmpty.toList ss
   unAlt s = [s]
-
---------------------------------------------------------------------------------
--- Annoying newtype because I don't want to make an orphan
--- @Biplate (NonEmpty a) a@ instance in this module.
-
-newtype NonEmpty_ a = NE (NonEmpty a)
-  deriving Foldable
-
-instance Uniplate a => Biplate (NonEmpty_ a) a where
-  biplate (NE (x :| xs)) = (str, NE . f)
-   where
-    (str, f) = plate (:|) |* x ||* xs
