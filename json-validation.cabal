@@ -4,28 +4,43 @@
 
 name:           json-validation
 version:        0.1.0.0
+synopsis:       Lightweight combinators for validating JSON
+description:    JSON schema validation
+category:       Data
+homepage:       https://github.com/mitchellwrosen/json-validation#readme
+bug-reports:    https://github.com/mitchellwrosen/json-validation/issues
+maintainer:     Mitchell Rosen
+license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
 cabal-version:  >= 1.10
 
+source-repository head
+  type: git
+  location: https://github.com/mitchellwrosen/json-validation
+
 library
   hs-source-dirs:
       src
-  default-extensions: BangPatterns DeriveAnyClass DeriveDataTypeable DeriveFoldable DeriveGeneric FlexibleInstances GADTs InstanceSigs LambdaCase MultiParamTypeClasses OverloadedLists OverloadedStrings StandaloneDeriving TupleSections TypeFamilies ViewPatterns
+  default-extensions: BangPatterns DeriveDataTypeable DeriveFoldable DeriveGeneric FlexibleInstances GADTs InstanceSigs LambdaCase MultiParamTypeClasses NoImplicitPrelude OverloadedLists OverloadedStrings StandaloneDeriving TupleSections TypeFamilies ViewPatterns
   ghc-options: -Wall
   build-depends:
-      base
-    , aeson
+      aeson
+    , base >= 4.7 && < 5
+    , base-compat >= 0.9.1
     , containers
     , hashable
     , iso8601-time
-    , microlens
+    , microlens            >= 0.3.0.0 && < 0.4.8
     , mtl
     , pcre-light
     , scientific
     , text
-    , unordered-containers
-    , vector
+    , unordered-containers >= 0.2.6.0 && < 0.2.8
+    , vector               >= 0.11    && < 0.12
+  if impl(ghc < 8.0.1)
+    build-depends:
+        semigroups
   exposed-modules:
       Data.Aeson.Validation
   other-modules:
@@ -37,13 +52,28 @@ test-suite doctest
   main-is: DocTest.hs
   hs-source-dirs:
       test
-  default-extensions: BangPatterns DeriveAnyClass DeriveDataTypeable DeriveFoldable DeriveGeneric FlexibleInstances GADTs InstanceSigs LambdaCase MultiParamTypeClasses OverloadedLists OverloadedStrings StandaloneDeriving TupleSections TypeFamilies ViewPatterns
+  default-extensions: BangPatterns DeriveDataTypeable DeriveFoldable DeriveGeneric FlexibleInstances GADTs InstanceSigs LambdaCase MultiParamTypeClasses NoImplicitPrelude OverloadedLists OverloadedStrings StandaloneDeriving TupleSections TypeFamilies ViewPatterns
   ghc-options: -Wall
   build-depends:
-      base
-    , doctest
+      aeson
+    , base >= 4.7 && < 5
+    , base-compat >= 0.9.1
+    , containers
+    , hashable
+    , iso8601-time
+    , microlens            >= 0.3.0.0 && < 0.4.8
+    , mtl
+    , pcre-light
+    , scientific
+    , text
+    , unordered-containers >= 0.2.6.0 && < 0.2.8
+    , vector               >= 0.11    && < 0.12
+    , doctest >= 0.11.0
     , json-validation
     , quickcheck-instances
+  if impl(ghc < 8.0.1)
+    build-depends:
+        semigroups
   other-modules:
       Spec
   default-language: Haskell2010
@@ -54,24 +84,29 @@ test-suite spec
   hs-source-dirs:
       src
     , test
-  default-extensions: BangPatterns DeriveAnyClass DeriveDataTypeable DeriveFoldable DeriveGeneric FlexibleInstances GADTs InstanceSigs LambdaCase MultiParamTypeClasses OverloadedLists OverloadedStrings StandaloneDeriving TupleSections TypeFamilies ViewPatterns
+  default-extensions: BangPatterns DeriveDataTypeable DeriveFoldable DeriveGeneric FlexibleInstances GADTs InstanceSigs LambdaCase MultiParamTypeClasses NoImplicitPrelude OverloadedLists OverloadedStrings StandaloneDeriving TupleSections TypeFamilies ViewPatterns
   ghc-options: -Wall
   build-depends:
-      base
-    , aeson
-    , hspec
-    , QuickCheck
-    , quickcheck-text
-    , scientific
-    , text
+      aeson
+    , base >= 4.7 && < 5
+    , base-compat >= 0.9.1
     , containers
     , hashable
     , iso8601-time
-    , microlens
+    , microlens            >= 0.3.0.0 && < 0.4.8
     , mtl
     , pcre-light
-    , unordered-containers
-    , vector
+    , scientific
+    , text
+    , unordered-containers >= 0.2.6.0 && < 0.2.8
+    , vector               >= 0.11    && < 0.12
+    , hspec
+    , json-validation
+    , QuickCheck
+    , quickcheck-text
+  if impl(ghc < 8.0.1)
+    build-depends:
+        semigroups
   other-modules:
       Data.Aeson.Validation
       Data.Aeson.Validation.Internal

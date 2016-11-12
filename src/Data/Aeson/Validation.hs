@@ -44,8 +44,9 @@ module Data.Aeson.Validation
 
 import Data.Aeson.Validation.Internal
 
-import Control.Monad.Reader
-import Control.Monad.Writer hiding ((<>))
+import Control.Monad ((>=>), unless, when)
+import Control.Monad.Reader (ReaderT, ask, local, mapReaderT, runReaderT)
+import Control.Monad.Writer (Writer, execWriter, tell)
 import Data.Aeson (Value(..))
 import Data.Foldable
 import Data.Hashable (Hashable(..))
@@ -62,6 +63,7 @@ import Data.Time.ISO8601 (parseISO8601)
 import Data.Vector (Vector)
 import GHC.Generics (Generic)
 import Lens.Micro hiding (set)
+import Prelude.Compat
 import Text.Regex.PCRE.Light (Regex)
 
 import qualified Data.HashMap.Strict   as HashMap
@@ -91,7 +93,9 @@ instance Monoid FieldMap where
 
 data Pair a b
   = Pair !a !b
-  deriving (Eq, Generic, Hashable)
+  deriving (Eq, Generic)
+
+instance (Hashable a, Hashable b) => Hashable (Pair a b)
 
 -- The validation monad.
 type Validation a = ReaderT Context (Writer (Seq Text)) a
@@ -179,30 +183,24 @@ class A schema where
   someString :: (Text -> Bool) -> schema
 
 instance A Schema where
-  someNumber :: (Scientific -> Bool) -> Schema
   someNumber p = SSomeNumber p Nothing
 
-  someInteger :: (Integer -> Bool) -> Schema
   someInteger p = SSomeNumber (either nope p . floatingOrInteger) Nothing
    where
     nope :: Double -> Bool
     nope _ = False
 
-  someString :: (Text -> Bool) -> Schema
   someString p = SSomeString p Nothing
 
 instance (a ~ Text) => A (a -> Schema) where
-  someNumber :: (Scientific -> Bool) -> Text -> Schema
   someNumber p s = SSomeNumber p (Just s)
 
-  someInteger :: (Integer -> Bool) -> Text -> Schema
   someInteger p s =
     SSomeNumber (either nope p . floatingOrInteger) (Just s)
    where
     nope :: Double -> Bool
     nope _ = False
 
-  someString :: (Text -> Bool) -> Text -> Schema
   someString p s = SSomeString p (Just s)
 
 -- | Any 'Data.Aeson.Types.Bool'.

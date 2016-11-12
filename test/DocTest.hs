@@ -1,11 +1,11 @@
 module Main where
 
+import Prelude.Compat
 import Test.DocTest
 
 main :: IO ()
 main = doctest
   [ "-XBangPatterns"
-  , "-XDeriveAnyClass"
   , "-XDeriveFoldable"
   , "-XDeriveGeneric"
   , "-XFlexibleContexts"
@@ -15,6 +15,7 @@ main = doctest
   , "-XLambdaCase"
   , "-XMultiParamTypeClasses"
   , "-XNoExtendedDefaultRules"
+  , "-XNoImplicitPrelude"
   , "-XOverloadedLists"
   , "-XOverloadedStrings"
   , "-XTypeFamilies"

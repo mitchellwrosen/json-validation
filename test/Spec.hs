@@ -1,18 +1,25 @@
+{-# LANGUAGE CPP                  #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 import Data.Aeson (Value(..), (.=))
 import Data.Aeson.Validation
 import Data.Aeson.Validation.Internal
-import Data.List.NonEmpty (NonEmpty(..))
+import Data.List.NonEmpty (NonEmpty(..), nonEmpty)
+import Data.Maybe (mapMaybe)
 import Data.Scientific (Scientific, base10Exponent, coefficient, scientific)
 import Data.Text (Text)
 import Data.Text.Arbitrary ()
 import GHC.Generics (Generic)
+import Prelude.Compat
 import Test.Hspec
 import Test.Hspec.QuickCheck
 import Test.QuickCheck.Arbitrary
 import Test.QuickCheck.Gen
 import Text.Show.Functions ()
+
+#if !MIN_VERSION_QuickCheck(2,8,0)
+import Data.Typeable (Typeable)
+#endif
 
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Text          as Text
@@ -59,12 +66,11 @@ arbitrary' = scale (`div` 2) arbitrary
 instance Arbitrary Demand where
   arbitrary = (\b -> if b then Opt else Req) <$> arbitrary
 
+#if !MIN_VERSION_QuickCheck(2,9,0)
 instance Arbitrary a => Arbitrary (NonEmpty a) where
-  arbitrary = NonEmpty.fromList <$> listOf1 arbitrary
-  shrink xs =
-    shrinkList shrink (NonEmpty.toList xs) >>= \case
-      [] -> []
-      y:ys -> pure (y :| ys)
+  arbitrary = (:|) <$> arbitrary <*> arbitrary
+  shrink (x:|xs) = mapMaybe nonEmpty (shrinkList shrink (x:xs))
+#endif
 
 instance Arbitrary Schema where
   arbitrary = frequency $
@@ -121,3 +127,14 @@ deriving instance Show Schema
 deriving instance Show ShallowField
 deriving instance Show Strict
 deriving instance Show Unique
+
+#if !MIN_VERSION_QuickCheck(2,8,0)
+deriving instance Typeable Schema
+deriving instance Typeable ShallowField
+deriving instance Typeable Strict
+deriving instance Typeable Demand
+deriving instance Typeable Unique
+
+scale :: (Int -> Int) -> Gen a -> Gen a
+scale f g = sized (\n -> resize (f n) g)
+#endif
