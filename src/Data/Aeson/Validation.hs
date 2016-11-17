@@ -44,9 +44,8 @@ module Data.Aeson.Validation
 
 import Data.Aeson.Validation.Internal
 
-import Control.Monad ((>=>), unless, when)
-import Control.Monad.Reader (ReaderT, ask, local, mapReaderT, runReaderT)
-import Control.Monad.Writer (Writer, execWriter, tell)
+import Control.Monad ((>=>))
+import Control.Monad.Reader (MonadReader, ask, local, runReader)
 import Data.Aeson (Value(..))
 import Data.Foldable
 import Data.Hashable (Hashable(..))
@@ -96,9 +95,6 @@ data Pair a b
   deriving (Eq, Generic)
 
 instance (Hashable a, Hashable b) => Hashable (Pair a b)
-
--- The validation monad.
-type Validation a = ReaderT Context (Writer (Seq Text)) a
 
 -- Breadcrumbs into a JSON object in reverse order.
 data Context
@@ -566,9 +562,10 @@ schema s v = null (validate s v)
 -- | Validate a 'Value' with a 'Schema' and emit schema violations as 'Text'.
 validate :: Schema -> Value -> [Text]
 validate s v =
-  toList (execWriter (runReaderT (validate_ (normalize s) v) Empty))
+  toList (runReader (validate_ (normalize s) v) Empty)
 
-validate_ :: Schema -> Value -> Validation ()
+validate_
+  :: (Applicative m, MonadReader Context m) => Schema -> Value -> m (Seq Text)
 validate_ = \case
   SBool           -> validateBool
   STrue           -> validateTrue
@@ -585,7 +582,7 @@ validate_ = \case
   SObject s xs    -> validateObject s xs
   SArray u x y s  -> validateArray u x y s
   STuple ss       -> validateTuple ss
-  SAnything       -> const ok
+  SAnything       -> const (pure mempty)
   SNullable s     -> validateNullable s
   SAlts ss        -> validateAlts ss
   SNegate s0      -> case s0 of
@@ -609,85 +606,113 @@ validate_ = \case
     SAlts ss        -> validateNotAlts ss
     SNegate s       -> validate_ s
 
-validateBool :: Value -> Validation ()
+validateBool :: (Applicative m, MonadReader Context m) => Value -> m (Seq Text)
 validateBool = \case
-  Bool _ -> ok
+  Bool _ -> pure mempty
   v -> mismatch "a bool" (valType v)
 
-validateTrue :: Value -> Validation ()
+validateTrue :: (Applicative m, MonadReader Context m) => Value -> m (Seq Text)
 validateTrue = \case
-  Bool b -> unless b (mismatch "true" "false")
+  Bool b | b -> pure mempty
+         | otherwise -> mismatch "true" "false"
   v -> mismatch "true" (valType v)
 
-validateFalse :: Value -> Validation ()
+validateFalse :: (Applicative m, MonadReader Context m) => Value -> m (Seq Text)
 validateFalse = \case
-  Bool b -> when b (mismatch "false" "true")
+  Bool b | b -> mismatch "false" "true"
+         | otherwise -> pure mempty
   v -> mismatch "false" (valType v)
 
-validateNumber :: Value -> Validation ()
+validateNumber
+  :: (Applicative m, MonadReader Context m) => Value -> m (Seq Text)
 validateNumber = \case
-  Number _ -> ok
+  Number _ -> pure mempty
   v -> mismatch "a number" (valType v)
 
-validateInteger :: Value -> Validation ()
+validateInteger
+  :: (Applicative m, MonadReader Context m) => Value -> m (Seq Text)
 validateInteger = \case
-  Number n -> unless (isInteger n) (mismatch "an integer" (tshow n))
+  Number n | isInteger n -> pure mempty
+           | otherwise -> mismatch "an integer" (tshow n)
   v -> mismatch "an integer" (valType v)
 
-validateTheNumber :: Scientific -> Value -> Validation ()
+validateTheNumber
+  :: (Applicative m, MonadReader Context m)
+  => Scientific -> Value -> m (Seq Text)
 validateTheNumber n = \case
-  Number m -> unless (isclose n m) (mismatch (tshow n) (tshow m))
+  Number m | isclose n m -> pure mempty
+           | otherwise -> mismatch (tshow n) (tshow m)
   v -> mismatch (tshow n) (valType v)
 
-validateTheInteger :: Integer -> Value -> Validation ()
+validateTheInteger
+  :: (Applicative m, MonadReader Context m) => Integer -> Value -> m (Seq Text)
 validateTheInteger n = \case
-  Number m -> unless (fromInteger n == m) (mismatch (tshow n) (tshow m))
+  Number m | fromInteger n == m -> pure mempty
+           | otherwise -> mismatch (tshow n) (tshow m)
   v -> mismatch (tshow n) (valType v)
 
 validateSomeNumber
-  :: (Scientific -> Bool) -> Maybe Text -> Value -> Validation ()
+  :: (Applicative m, MonadReader Context m)
+  => (Scientific -> Bool) -> Maybe Text -> Value -> m (Seq Text)
 validateSomeNumber p msg = \case
-  Number n -> unless (p n) (failedPredicate msg)
+  Number n | p n -> pure mempty
+           | otherwise -> failedPredicate msg
   v -> mismatch "a number" (valType v)
 
-validateString :: Value -> Validation ()
+validateString
+  :: (Applicative m, MonadReader Context m)
+  => Value -> m (Seq Text)
 validateString = \case
-  String _ -> ok
+  String _ -> pure mempty
   v -> mismatch "a string" (valType v)
 
-validateTheString :: Text -> Value -> Validation ()
+validateTheString
+  :: (Applicative m, MonadReader Context m)
+  => Text -> Value -> m (Seq Text)
 validateTheString s = \case
-  String s' -> unless (s == s') (mismatch (tshow s) (tshow s'))
+  String s' | s == s' -> pure mempty
+            | otherwise -> mismatch (tshow s) (tshow s')
   v -> mismatch (tshow s) (valType v)
 
-validateSomeString :: (Text -> Bool) -> Maybe Text -> Value -> Validation ()
+validateSomeString
+  :: (Applicative m, MonadReader Context m)
+  => (Text -> Bool) -> Maybe Text -> Value -> m (Seq Text)
 validateSomeString p msg = \case
-  String s -> unless (p s) (failedPredicate msg)
+  String s | p s -> pure mempty
+           | otherwise -> failedPredicate msg
   v -> mismatch "a string" (valType v)
 
-validateDateTime :: Value -> Validation ()
+validateDateTime
+  :: (Applicative m, MonadReader Context m) => Value -> m (Seq Text)
 validateDateTime = \case
-  String s -> unless (isDateTime s) (mismatch "a datetime" (tshow s))
+  String s | isDateTime s -> pure mempty
+           | otherwise -> mismatch "a datetime" (tshow s)
   v -> mismatch "a string" (valType v)
 
-validateObject :: Strict -> [ShallowField] -> Value -> Validation ()
+validateObject
+  :: (Applicative m, MonadReader Context m)
+  => Strict -> [ShallowField] -> Value -> m (Seq Text)
 validateObject s xs = \case
   Object obj ->
     case s of
-      NotStrict -> mapM_ (validateField obj) xs
+      NotStrict -> mconcat <$> mapM (validateField obj) xs
       Strict    -> validateObject' xs obj
   v -> mismatch "an object" (valType v)
 
-validateObject' :: [ShallowField] -> HashMap Text Value -> Validation ()
+validateObject'
+  :: (Applicative m, MonadReader Context m)
+  => [ShallowField] -> HashMap Text Value -> m (Seq Text)
 validateObject' [] obj =
   case HashMap.keys obj of
-    [] -> ok
+    [] -> pure mempty
     ks -> err ("extra fields: " <> Text.intercalate ", " (map tshow ks))
-validateObject' (x:xs) obj = do
-  validateField obj x
-  validateObject' xs (HashMap.delete (fieldKey x) obj)
+validateObject' (x:xs) obj = (<>)
+  <$> validateField obj x
+  <*> validateObject' xs (HashMap.delete (fieldKey x) obj)
 
-validateField :: HashMap Text Value -> ShallowField -> Validation ()
+validateField
+  :: (Applicative m, MonadReader Context m)
+  => HashMap Text Value -> ShallowField -> m (Seq Text)
 validateField obj = \case
   ShallowField Req key s ->
     case HashMap.lookup key obj of
@@ -695,92 +720,124 @@ validateField obj = \case
       Just v  -> local (Property key) (validate_ s v)
   ShallowField Opt key s ->
     case HashMap.lookup key obj of
-      Nothing -> ok
+      Nothing -> pure mempty
       Just v  -> local (Property key) (validate_ s v)
 
-validateArray :: Unique -> Int -> Int -> Schema -> Value -> Validation ()
+validateArray
+  :: forall m. (Applicative m, MonadReader Context m)
+  => Unique -> Int -> Int -> Schema -> Value -> m (Seq Text)
 validateArray uniq x y sch = \case
   Array v -> do
-    case sch of
-      SAnything -> ok
-      _ -> Vector.imapM_ (\n val -> local (Index n) (validate_ sch val)) v
-    when (uniq == Unique) (uniqCheck v)
-    boundsCheck (length v)
+    errs1 <-
+      case sch of
+        SAnything -> pure mempty
+        _ ->
+          mconcat <$>
+            imapM (\n val -> local (Index n) (validate_ sch val))
+              (Vector.toList v)
+
+    errs2 <-
+      if uniq == Unique
+        then uniqCheck v
+        else pure mempty
+
+    errs3 <- boundsCheck (length v)
+
+    pure (errs1 <> errs2 <> errs3)
   v -> mismatch "an array" (valType v)
  where
-  boundsCheck :: Int -> Validation ()
-  boundsCheck len =
-    unless (len >= x && len <= y) $
-      case (x == minBound, y == maxBound) of
-        (True, True) -> error "impossible"
-        (True, False) -> mismatch ("<= " <> tshow y <> " elements") (tshow len)
-        (False, True) -> mismatch (">= " <> tshow x <> " elements") (tshow len)
-        (False, False) ->
-          mismatch
-            ("between " <> tshow x <> " and " <> tshow y <>
-              " elements (inclusive)")
-            (tshow len)
+  boundsCheck :: Int -> m (Seq Text)
+  boundsCheck len
+    | len >= x && len <= y = pure mempty
+    | otherwise =
+        case (x == minBound, y == maxBound) of
+          (True, True) -> error "impossible"
+          (True, False) -> mismatch ("<= " <> tshow y <> " elements") (tshow len)
+          (False, True) -> mismatch (">= " <> tshow x <> " elements") (tshow len)
+          (False, False) ->
+            mismatch
+              ("between " <> tshow x <> " and " <> tshow y <>
+                " elements (inclusive)")
+              (tshow len)
 
-  uniqCheck :: Vector Value -> Validation ()
+  uniqCheck :: Vector Value -> m (Seq Text)
   uniqCheck v =
-    when (length v /= length (toSet v))
-      (err "array does not contain unique elements")
+    if length v /= length (toSet v)
+       then err "array does not contain unique elements"
+       else pure mempty
    where
     toSet :: Vector Value -> HashSet Value
     toSet = Vector.foldr' HashSet.insert mempty
 
-validateTuple :: [Schema] -> Value -> Validation ()
+validateTuple
+  :: forall m.
+     (Applicative m, MonadReader Context m)
+  => [Schema] -> Value -> m (Seq Text)
 validateTuple ss0 = \case
   Array v0 -> go 0 ss0 (toList v0)
    where
-    go :: Int -> [Schema] -> [Value] -> Validation ()
-    go _  [] [] = ok
-    go !n (s:ss) (v:vs) = do
-      local (Index n) (validate_ s v)
-      go (n+1) ss vs
+    go :: Int -> [Schema] -> [Value] -> m (Seq Text)
+    go _  [] [] = pure mempty
+    go !n (s:ss) (v:vs) = (<>)
+      <$> local (Index n) (validate_ s v)
+      <*> go (n+1) ss vs
     go _ _ _ =
       mismatch (tshow (length ss0) <> " elements")
-        (tshow (length v0) <> (" elements"))
+        (tshow (length v0) <> " elements")
   v -> mismatch "an array" (valType v)
 
-validateNullable :: Schema -> Value -> Validation ()
-validateNullable s v = when (v /= Null) (validate_ s v)
+validateNullable
+  :: (Applicative m, MonadReader Context m)
+  => Schema -> Value -> m (Seq Text)
+validateNullable s v =
+  if v /= Null
+    then validate_ s v
+    else pure mempty
 
-validateAlts :: NonEmpty Schema -> Value -> Validation ()
+validateAlts
+  :: forall m.
+     (Applicative m, MonadReader Context m)
+  => NonEmpty Schema -> Value -> m (Seq Text)
 validateAlts ss0 val = go (NonEmpty.toList ss0)
  where
-  go :: [Schema] -> Validation ()
+  go :: [Schema] -> m (Seq Text)
   go [] = error "impossible"
   go [s] = validate_ s val
   go (s:ss) = do
-    errs1 <- vlisten (validate_ s val)
-    unless (null errs1) $ do
-      errs2 <- vlisten (go ss)
-      unless (null errs2) (tell (errs1 <> errs2))
+    errs1 <- validate_ s val
+    errs2 <- go ss
+    if null errs1 || null errs2
+      then pure mempty
+      else pure (errs1 <> errs2)
 
-validateNotBool :: Value -> Validation ()
+validateNotBool
+  :: (Applicative m, MonadReader Context m) => Value -> m (Seq Text)
 validateNotBool v =
   case v of
     Bool b -> mismatch "anything but a bool" (if b then "true" else "false")
-    _ -> ok
+    _ -> pure mempty
 
-validateNotTrue :: Value -> Validation ()
+validateNotTrue
+  :: (Applicative m, MonadReader Context m) => Value -> m (Seq Text)
 validateNotTrue = \case
   Bool True -> mismatch "anything but true" "true"
-  _ -> ok
+  _ -> pure mempty
 
-validateNotFalse :: Value -> Validation ()
+validateNotFalse
+  :: (Applicative m, MonadReader Context m) => Value -> m (Seq Text)
 validateNotFalse = \case
   Bool False -> mismatch "anything but false" "false"
-  _ -> ok
+  _ -> pure mempty
 
-validateNotNumber :: Value -> Validation ()
+validateNotNumber
+  :: (Applicative m, MonadReader Context m) => Value -> m (Seq Text)
 validateNotNumber v =
   case v of
     Number n -> mismatch "anything but a number" (tshow n)
-    _ -> ok
+    _ -> pure mempty
 
-validateNotInteger :: Value -> Validation ()
+validateNotInteger
+  :: (Applicative m, MonadReader Context m) => Value -> m (Seq Text)
 validateNotInteger = \case
   Number n | isInteger n ->
     mismatch "anything but an integer" (tshow m)
@@ -790,89 +847,114 @@ validateNotInteger = \case
 
     nope :: Double -> Integer
     nope = error "impossible"
-  _ -> ok
+  _ -> pure mempty
 
-validateNotTheNumber :: Scientific -> Value -> Validation ()
+validateNotTheNumber
+  :: (Applicative m, MonadReader Context m)
+  => Scientific -> Value -> m (Seq Text)
 validateNotTheNumber n v =
   case v of
     Number m | isclose n m -> mismatch ("anything but " <> tshow n) (tshow m)
-    _ -> ok
+    _ -> pure mempty
 
-validateNotTheInteger :: Integer -> Value -> Validation ()
+validateNotTheInteger
+  :: (Applicative m, MonadReader Context m)
+  => Integer -> Value -> m (Seq Text)
 validateNotTheInteger n v =
   case v of
     Number m | fromInteger n == m ->
       mismatch ("anything but " <> tshow n) (tshow m)
-    _ -> ok
+    _ -> pure mempty
 
 validateNotSomeNumber
-  :: (Scientific -> Bool) -> Maybe Text -> Value -> Validation ()
+  :: (Applicative m, MonadReader Context m)
+  => (Scientific -> Bool) -> Maybe Text -> Value -> m (Seq Text)
 validateNotSomeNumber p msg = \case
   Number n | p n -> passedPredicate msg
-  _ -> ok
+  _ -> pure mempty
 
-validateNotString :: Value -> Validation ()
+validateNotString
+  :: (Applicative m, MonadReader Context m)
+  => Value -> m (Seq Text)
 validateNotString v =
   case v of
     String s -> mismatch "anything but a string" (tshow s)
-    _ -> ok
+    _ -> pure mempty
 
-validateNotTheString :: Text -> Value -> Validation ()
+validateNotTheString
+  :: (Applicative m, MonadReader Context m)
+  => Text -> Value -> m (Seq Text)
 validateNotTheString s = \case
   String s' | s == s' -> mismatch ("anything but " <> tshow s) (tshow s)
-  _ -> ok
+  _ -> pure mempty
 
-validateNotSomeString :: (Text -> Bool) -> Maybe Text -> Value -> Validation ()
+validateNotSomeString
+  :: (Applicative m, MonadReader Context m)
+  => (Text -> Bool) -> Maybe Text -> Value -> m (Seq Text)
 validateNotSomeString p msg = \case
   String s | p s -> passedPredicate msg
-  _ -> ok
+  _ -> pure mempty
 
-validateNotDateTime :: Value -> Validation ()
+validateNotDateTime
+  :: (Applicative m, MonadReader Context m)
+  => Value -> m (Seq Text)
 validateNotDateTime = \case
   String s | isDateTime s -> mismatch "anything but a datetime" (tshow s)
-  _ -> ok
+  _ -> pure mempty
 
-validateNotObject :: Strict -> [ShallowField] -> Value -> Validation ()
+validateNotObject
+  :: (Applicative m, MonadReader Context m)
+  => Strict -> [ShallowField] -> Value -> m (Seq Text)
 validateNotObject sch xs val = do
-  errs <- vlisten (validateObject sch xs val)
-  when (null errs) (err "passed object schema")
+  errs <- validateObject sch xs val
+  if null errs
+    then err "passed object schema"
+    else pure mempty
 
-validateNotArray :: Unique -> Int -> Int -> Schema -> Value -> Validation ()
+validateNotArray
+  :: (Applicative m, MonadReader Context m)
+  => Unique -> Int -> Int -> Schema -> Value -> m (Seq Text)
 validateNotArray uniq x y sch val = do
-  errs <- vlisten (validateArray uniq x y sch val)
-  when (null errs) (err ("passed " <> typ <> " schema"))
+  errs <- validateArray uniq x y sch val
+  if null errs
+    then err ("passed " <> typ <> " schema")
+    else pure mempty
  where
   typ =
     case uniq of
       Unique    -> "set"
       NotUnique -> "array"
 
-validateNotTuple :: [Schema] -> Value -> Validation ()
+validateNotTuple
+  :: (Applicative m, MonadReader Context m)
+  => [Schema] -> Value -> m (Seq Text)
 validateNotTuple ss val = do
-  errs <- vlisten (validateTuple ss val)
-  when (null errs) (err "passed tuple schema")
+  errs <- validateTuple ss val
+  if null errs
+    then err "passed tuple schema"
+    else pure mempty
 
-validateNotNullable :: Schema -> Value -> Validation ()
+validateNotNullable
+  :: (Applicative m, MonadReader Context m)
+  => Schema -> Value -> m (Seq Text)
 validateNotNullable s = \case
   Null -> err "passed nullable schema"
   v    -> validate_ (negate s) v
 
-validateNotAlts :: NonEmpty Schema -> Value -> Validation ()
-validateNotAlts ss val = mapM_ (\s -> validate_ (negate s) val) ss
+validateNotAlts
+  :: (Applicative m, MonadReader Context m)
+  => NonEmpty Schema -> Value -> m (Seq Text)
+validateNotAlts ss val =
+  mconcat <$> mapM (\s -> validate_ (negate s) val) (toList ss)
 
--- Run a 'Validation' action in the current 'Context', capturing everything it
--- tells.
-vlisten :: Validation a -> Validation (Seq Text)
-vlisten = mapReaderT (pure . execWriter)
-
-ok :: Validation ()
-ok = pure ()
 
 -- Validation error; prefixes the message with the current context (if any).
-err :: Text -> Validation ()
+err
+  :: (Applicative m, MonadReader Context m)
+  => Text -> m (Seq Text)
 err msg = do
   ctx <- ask
-  tell (pure (prefix ctx <> msg))
+  pure (pure (prefix ctx <> msg))
  where
   prefix :: Context -> Text
   prefix = maybe mempty (\s -> "in context " <> s <> ", ") . prettyPrintContext
@@ -896,16 +978,19 @@ err msg = do
       Index    idx ctx -> go ctx <> tshow idx <> "."
 
 -- Generic "mismatch" of the expected/actual sort.
-mismatch :: Text -> Text -> Validation ()
+mismatch
+  :: (Applicative m, MonadReader Context m) => Text -> Text -> m (Seq Text)
 mismatch x y = err ("expected " <> x <> " but found " <> y)
 
 -- Erroneously failed a (possibly named) predicate.
-failedPredicate :: Maybe Text -> Validation ()
+failedPredicate
+  :: (Applicative m, MonadReader Context m) => Maybe Text -> m (Seq Text)
 failedPredicate msg =
   err (maybe "failed predicate" ("failed predicate: " <>) msg)
 
 -- Erroneously passed a (possibly named) predicate.
-passedPredicate :: Maybe Text -> Validation ()
+passedPredicate
+  :: (Applicative m, MonadReader Context m) => Maybe Text -> m (Seq Text)
 passedPredicate msg =
   err (maybe "passed predicate" ("passed predicate: " <>) msg)
 
@@ -926,3 +1011,6 @@ isclose n m = abs (n-m) <= 1e-9 * max (abs n) (abs m)
 
 isDateTime :: Text -> Bool
 isDateTime = isJust . parseISO8601 . Text.unpack
+
+imapM :: Monad m => (Int -> a -> m b) -> [a] -> m [b]
+imapM f xs = mapM (uncurry f) (zip [0..] xs)

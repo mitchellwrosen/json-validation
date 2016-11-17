@@ -22,7 +22,7 @@ source-repository head
 library
   hs-source-dirs:
       src
-  default-extensions: BangPatterns DeriveDataTypeable DeriveFoldable DeriveGeneric FlexibleInstances GADTs InstanceSigs LambdaCase MultiParamTypeClasses NoImplicitPrelude OverloadedLists OverloadedStrings StandaloneDeriving TupleSections TypeFamilies ViewPatterns
+  default-extensions: BangPatterns DeriveDataTypeable DeriveFoldable DeriveGeneric FlexibleContexts FlexibleInstances GADTs InstanceSigs LambdaCase MultiParamTypeClasses NoImplicitPrelude OverloadedLists OverloadedStrings ScopedTypeVariables StandaloneDeriving TupleSections TypeFamilies ViewPatterns
   ghc-options: -Wall
   build-depends:
       aeson
@@ -52,7 +52,7 @@ test-suite doctest
   main-is: DocTest.hs
   hs-source-dirs:
       test
-  default-extensions: BangPatterns DeriveDataTypeable DeriveFoldable DeriveGeneric FlexibleInstances GADTs InstanceSigs LambdaCase MultiParamTypeClasses NoImplicitPrelude OverloadedLists OverloadedStrings StandaloneDeriving TupleSections TypeFamilies ViewPatterns
+  default-extensions: BangPatterns DeriveDataTypeable DeriveFoldable DeriveGeneric FlexibleContexts FlexibleInstances GADTs InstanceSigs LambdaCase MultiParamTypeClasses NoImplicitPrelude OverloadedLists OverloadedStrings ScopedTypeVariables StandaloneDeriving TupleSections TypeFamilies ViewPatterns
   ghc-options: -Wall
   build-depends:
       aeson
@@ -84,7 +84,7 @@ test-suite spec
   hs-source-dirs:
       src
     , test
-  default-extensions: BangPatterns DeriveDataTypeable DeriveFoldable DeriveGeneric FlexibleInstances GADTs InstanceSigs LambdaCase MultiParamTypeClasses NoImplicitPrelude OverloadedLists OverloadedStrings StandaloneDeriving TupleSections TypeFamilies ViewPatterns
+  default-extensions: BangPatterns DeriveDataTypeable DeriveFoldable DeriveGeneric FlexibleContexts FlexibleInstances GADTs InstanceSigs LambdaCase MultiParamTypeClasses NoImplicitPrelude OverloadedLists OverloadedStrings ScopedTypeVariables StandaloneDeriving TupleSections TypeFamilies ViewPatterns
   ghc-options: -Wall
   build-depends:
       aeson

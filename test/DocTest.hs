@@ -18,6 +18,7 @@ main = doctest
   , "-XNoImplicitPrelude"
   , "-XOverloadedLists"
   , "-XOverloadedStrings"
+  , "-XScopedTypeVariables"
   , "-XTypeFamilies"
   , "src"
   ]
