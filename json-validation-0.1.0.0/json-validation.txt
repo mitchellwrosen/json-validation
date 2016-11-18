@@ -2,6 +2,9 @@
 -- See Hoogle, http://www.haskell.org/hoogle/
 
 
+-- | Lightweight combinators for validating JSON
+--   
+--   JSON schema validation
 @package json-validation
 @version 0.1.0.0
 
@@ -271,13 +274,23 @@ someString :: A schema => (Text -> Bool) -> schema
 --   </pre>
 regex :: Text -> Schema
 
+-- | A <a>String</a> in <a>ISO 8601</a> format.
+--   
+--   <h4><b>Examples</b></h4>
+--   
+--   <pre>
+--   &gt;&gt;&gt; schema datetime (String "2000-01-01T00:00:00.000Z")
+--   True
+--   </pre>
+datetime :: Schema
+
 -- | An opaque object <a>Field</a>.
 --   
---   Create a <a>Field</a> with <a>.:</a> or <a>.:?</a>, and bundle it into
---   a <a>Schema</a> using <a>object</a> or <a>object'</a>
+--   Create a <a>Field</a> with <tt>.:</tt> or <tt>.:?</tt>, and bundle it
+--   into a <a>Schema</a> using <tt>object</tt> or <tt>object'</tt>
 data Field
 
--- | An arbitrarily deep non-empty <a>Path</a> into an <a>Object</a>,
+-- | An arbitrarily deep non-empty <a>Path</a> into an <tt>Object</tt>,
 --   created with either string-literal or list-literal syntax.
 --   
 --   Beware: the <a>IsList</a> instance is partial; <tt>[]</tt> is not
@@ -498,21 +511,9 @@ anything :: Schema
 --   True
 --   </pre>
 nullable :: Schema -> Schema
-instance GHC.Classes.Eq Data.Aeson.Validation.Unique
-instance (Data.Hashable.Class.Hashable a, Data.Hashable.Class.Hashable b) => Data.Hashable.Class.Hashable (Data.Aeson.Validation.Pair a b)
 instance GHC.Generics.Generic (Data.Aeson.Validation.Pair a b)
 instance (GHC.Classes.Eq a, GHC.Classes.Eq b) => GHC.Classes.Eq (Data.Aeson.Validation.Pair a b)
-instance GHC.Classes.Ord Data.Aeson.Validation.Path
-instance GHC.Classes.Eq Data.Aeson.Validation.Path
-instance GHC.Classes.Eq Data.Aeson.Validation.Demand
-instance GHC.Num.Num Data.Aeson.Validation.Schema
-instance GHC.Real.Fractional Data.Aeson.Validation.Schema
-instance Data.Semigroup.Semigroup Data.Aeson.Validation.Schema
-instance Data.String.IsString Data.Aeson.Validation.Schema
-instance Data.Hashable.Class.Hashable Data.Aeson.Validation.Demand
-instance GHC.Show.Show Data.Aeson.Validation.Path
-instance Data.String.IsString Data.Aeson.Validation.Path
-instance GHC.Exts.IsList Data.Aeson.Validation.Path
 instance GHC.Base.Monoid Data.Aeson.Validation.FieldMap
-instance Data.Aeson.Validation.A Data.Aeson.Validation.Schema
-instance a ~ Data.Text.Internal.Text => Data.Aeson.Validation.A (a -> Data.Aeson.Validation.Schema)
+instance (Data.Hashable.Class.Hashable a, Data.Hashable.Class.Hashable b) => Data.Hashable.Class.Hashable (Data.Aeson.Validation.Pair a b)
+instance Data.Aeson.Validation.A Data.Aeson.Validation.Internal.Schema
+instance a ~ Data.Text.Internal.Text => Data.Aeson.Validation.A (a -> Data.Aeson.Validation.Internal.Schema)
