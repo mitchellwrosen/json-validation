@@ -156,7 +156,7 @@ instance Hashable Demand where
 -- Create a 'Field' with '.:' or '.:?', and bundle it into a 'Schema' using
 -- 'object' or 'object''
 data Field
-  = Field !Demand !Path !Schema
+  = Field !Demand !(NonEmpty Text) !Schema
 
 data ShallowField = ShallowField
   { fieldDemand :: !Demand
@@ -166,52 +166,6 @@ data ShallowField = ShallowField
 
 fieldSchemaL :: Lens' ShallowField Schema
 fieldSchemaL f (ShallowField a b c) = (\c' -> ShallowField a b c') <$> f c
-
--- | An arbitrarily deep non-empty 'Path' into an 'Object', created with either
--- string-literal or list-literal syntax.
---
--- Beware: the 'GHC.IsList' instance is partial; @[]@ is not allowed and will
--- call 'error'.
---
--- ==== __Examples__
---
--- >>> "foo" :: Path
--- ["foo"]
---
--- >>> ["foo", "bar"] :: Path
--- ["foo","bar"]
---
--- >>> [] :: Path
--- *** Exception: Data.Aeson.Validation.Path.fromList: empty list
-data Path
-  = Link !Text !Path
-  | Leaf !Text
-  deriving (Eq, Ord)
-
-instance Show Path where
-  show = show . GHC.toList
-
--- | A singleton 'Path'.
-instance GHC.IsString Path where
-  fromString = Leaf . GHC.fromString
-
--- | 'Path's created with @[]@ syntax must be non-empty.
-instance GHC.IsList Path where
-  type Item Path = Text
-
-  fromList :: [GHC.Item Path] -> Path
-  fromList [] =
-    errorWithoutStackTrace "Data.Aeson.Validation.Path.fromList: empty list"
-  fromList xs0 = go xs0
-   where
-    go :: [Text] -> Path
-    go []     = error "impossible"
-    go [x]    = Leaf x
-    go (x:xs) = Link x (go xs)
-
-  toList :: Path -> [GHC.Item Path]
-  toList (Leaf x)    = [x]
-  toList (Link x xs) = x : GHC.toList xs
 
 -- Are extra properties of an object allowed?
 data Strict

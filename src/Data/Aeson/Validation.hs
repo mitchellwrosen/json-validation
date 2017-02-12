@@ -24,7 +24,6 @@ module Data.Aeson.Validation
   , datetime
     -- * Object schemas
   , Field
-  , Path
   , object
   , object'
   , (.:)
@@ -65,11 +64,11 @@ import Lens.Micro hiding (set)
 import Prelude.Compat
 import Text.Regex.PCRE.Light (Regex)
 
-import qualified Data.HashMap.Strict   as HashMap
-import qualified Data.HashSet          as HashSet
-import qualified Data.List.NonEmpty    as NonEmpty
-import qualified Data.Text             as Text
-import qualified Data.Vector           as Vector
+import qualified Data.HashMap.Strict as HashMap
+import qualified Data.HashSet as HashSet
+import qualified Data.List.NonEmpty as NonEmpty
+import qualified Data.Text as Text
+import qualified Data.Vector as Vector
 import qualified Text.Regex.PCRE.Light as Regex
 
 -- $setup
@@ -400,19 +399,19 @@ flatten s xs = mapFields (foldr step mempty xs)
     :: Field
     -> HashMap (Pair Demand Text) (Pair FieldMap [Schema])
     -> HashMap (Pair Demand Text) (Pair FieldMap [Schema])
-  step (Field req path sch) = go path
+  step (Field req path sch) = go (NonEmpty.toList path)
    where
-    go :: Path
+    go :: [Text]
        -> HashMap (Pair Demand Text) (Pair FieldMap [Schema])
        -> HashMap (Pair Demand Text) (Pair FieldMap [Schema])
     go = \case
-      Leaf key ->
+      [key] ->
         HashMap.alter
           (\case
             Nothing -> Just (Pair mempty [sch])
             Just (Pair m schs) -> Just (Pair m (sch : schs)))
           (Pair req key)
-      Link key path' ->
+      key:path' ->
         HashMap.alter
           (\case
             Nothing -> val mempty []
@@ -443,12 +442,12 @@ flatten s xs = mapFields (foldr step mempty xs)
         }
 
 -- | A required 'Field'.
-(.:) :: Path -> Schema -> Field
+(.:) :: NonEmpty Text -> Schema -> Field
 (.:) = Field Req
 infixr 5 .:
 
 -- | An optional 'Field'.
-(.:?) :: Path -> Schema -> Field
+(.:?) :: NonEmpty Text -> Schema -> Field
 (.:?) = Field Opt
 infixr 5 .:?
 
