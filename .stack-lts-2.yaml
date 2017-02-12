@@ -1,0 +1,4 @@
+resolver: lts-2.22
+extra-deps:
+  - iso8601-time-0.1.4
+  - microlens-0.4.7.0
