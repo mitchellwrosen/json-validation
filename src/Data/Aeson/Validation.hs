@@ -1,3 +1,12 @@
+{-# language BangPatterns        #-}
+{-# language DeriveGeneric       #-}
+{-# language FlexibleContexts    #-}
+{-# language FlexibleInstances   #-}
+{-# language LambdaCase          #-}
+{-# language OverloadedStrings   #-}
+{-# language ScopedTypeVariables #-}
+{-# language TypeFamilies        #-}
+
 -- | JSON schema validation.
 
 module Data.Aeson.Validation
@@ -43,10 +52,11 @@ module Data.Aeson.Validation
 
 import Data.Aeson.Validation.Internal
 
+import Control.Applicative
 import Control.Monad ((>=>))
 import Control.Monad.Reader (MonadReader, ask, local, runReader)
 import Data.Aeson (Value(..))
-import Data.Foldable
+import Data.Foldable hiding (foldr)
 import Data.Hashable (Hashable(..))
 import Data.HashMap.Strict (HashMap)
 import Data.HashSet (HashSet)
@@ -61,7 +71,6 @@ import Data.Time.ISO8601 (parseISO8601)
 import Data.Vector (Vector)
 import GHC.Generics (Generic)
 import Lens.Micro hiding (set)
-import Prelude.Compat
 import Text.Regex.PCRE.Light (Regex)
 
 import qualified Data.HashMap.Strict as HashMap
@@ -73,6 +82,7 @@ import qualified Text.Regex.PCRE.Light as Regex
 
 -- $setup
 -- >>> import Data.Aeson ((.=))
+-- >>> import Data.List.NonEmpty (NonEmpty((:|)))
 -- >>> import Test.QuickCheck.Instances ()
 -- >>> import qualified Data.Text as Text
 
@@ -351,12 +361,12 @@ datetime = SDateTime
 --
 -- ==== __Examples__
 --
--- >>> let fields = ["foo" .: number]
+-- >>> let fields = [("foo":|[]) .: number]
 -- >>> let values = ["foo" .= Number 1, "bar" .= Bool True]
 -- >>> schema (object fields) (Object values)
 -- True
 --
--- >>> let fields = [["foo", "bar"] .: number]
+-- >>> let fields = [("foo":|["bar"]) .: number]
 -- >>> let values = ["foo" .= Object ["bar" .= Number 1]]
 -- >>> schema (object fields) (Object values)
 -- True
@@ -370,22 +380,22 @@ object xs = SObject NotStrict (flatten NotStrict xs)
 --
 -- ==== __Examples__
 --
--- >>> let fields = ["foo" .: number]
+-- >>> let fields = [("foo":|[]) .: number]
 -- >>> let values = ["foo" .= Number 1]
 -- >>> schema (object' fields) (Object values)
 -- True
 --
--- >>> let fields = ["foo" .: number]
+-- >>> let fields = [("foo":|[]) .: number]
 -- >>> let values = ["foo" .= Number 1, "bar" .= Bool True]
 -- >>> schema (object' fields) (Object values)
 -- False
 --
--- >>> let fields = [["foo", "bar"] .: number]
+-- >>> let fields = [("foo":|["bar"]) .: number]
 -- >>> let values = ["foo" .= Object ["bar" .= Number 1]]
 -- >>> schema (object' fields) (Object values)
 -- True
 --
--- >>> let fields = [["foo", "bar"] .: number]
+-- >>> let fields = [("foo":|["bar"]) .: number]
 -- >>> let values = ["foo" .= Object ["bar" .= Number 1], "baz" .= Bool True]
 -- >>> schema (object' fields) (Object values)
 -- False

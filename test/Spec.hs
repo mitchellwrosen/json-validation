@@ -1,4 +1,9 @@
 {-# LANGUAGE CPP                  #-}
+{-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE OverloadedLists      #-}
+{-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE StandaloneDeriving   #-}
+{-# LANGUAGE TupleSections        #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 import Data.Aeson (Value(..), (.=))
@@ -9,20 +14,16 @@ import Data.Maybe (mapMaybe)
 import Data.Scientific (Scientific, base10Exponent, coefficient, scientific)
 import Data.Text (Text)
 import Data.Text.Arbitrary ()
+import Data.Typeable (Typeable)
 import GHC.Generics (Generic)
-import Prelude.Compat
 import Test.Hspec
 import Test.Hspec.QuickCheck
 import Test.QuickCheck.Arbitrary
 import Test.QuickCheck.Gen
 import Text.Show.Functions ()
 
-#if !MIN_VERSION_QuickCheck(2,8,0)
-import Data.Typeable (Typeable)
-#endif
-
 import qualified Data.List.NonEmpty as NonEmpty
-import qualified Data.Text          as Text
+import qualified Data.Text as Text
 
 main :: IO ()
 main = hspec spec
@@ -37,7 +38,7 @@ spec = do
   describe "object'" $ do
     it "singleton paths work" $ do
       validate
-        (object' ["foo" .: anything, "bar" .: anything])
+        (object' [["foo"] .: anything, ["bar"] .: anything])
         (Object ["foo" .= Null, "bar" .= Null])
       `shouldBe` []
 
@@ -66,11 +67,11 @@ arbitrary' = scale (`div` 2) arbitrary
 instance Arbitrary Demand where
   arbitrary = (\b -> if b then Opt else Req) <$> arbitrary
 
-#if !MIN_VERSION_QuickCheck(2,9,0)
-instance Arbitrary a => Arbitrary (NonEmpty a) where
-  arbitrary = (:|) <$> arbitrary <*> arbitrary
-  shrink (x:|xs) = mapMaybe nonEmpty (shrinkList shrink (x:xs))
-#endif
+-- #if !MIN_VERSION_QuickCheck(2,9,0)
+-- instance Arbitrary a => Arbitrary (NonEmpty a) where
+--   arbitrary = (:|) <$> arbitrary <*> arbitrary
+--   shrink (x:|xs) = mapMaybe nonEmpty (shrinkList shrink (x:xs))
+-- #endif
 
 instance Arbitrary Schema where
   arbitrary = frequency $
@@ -128,13 +129,13 @@ deriving instance Show ShallowField
 deriving instance Show Strict
 deriving instance Show Unique
 
-#if !MIN_VERSION_QuickCheck(2,8,0)
-deriving instance Typeable Schema
-deriving instance Typeable ShallowField
-deriving instance Typeable Strict
-deriving instance Typeable Demand
-deriving instance Typeable Unique
-
-scale :: (Int -> Int) -> Gen a -> Gen a
-scale f g = sized (\n -> resize (f n) g)
-#endif
+-- #if !MIN_VERSION_QuickCheck(2,8,0)
+-- deriving instance Typeable Schema
+-- deriving instance Typeable ShallowField
+-- deriving instance Typeable Strict
+-- deriving instance Typeable Demand
+-- deriving instance Typeable Unique
+--
+-- scale :: (Int -> Int) -> Gen a -> Gen a
+-- scale f g = sized (\n -> resize (f n) g)
+-- #endif
