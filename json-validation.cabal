@@ -52,7 +52,7 @@ test-suite doctest
       aeson
     , base
     , containers
-    , doctest ^>= 0.11
+    , doctest ^>= 0.11 || ^>= 0.12 || ^>= 0.13
     , hashable
     , iso8601-time
     , json-validation
@@ -84,7 +84,7 @@ test-suite spec
     , microlens
     , mtl
     , pcre-light
-    , QuickCheck ^>= 2.9.0
+    , QuickCheck ^>= 2.10 || ^>= 2.11
     , quickcheck-text
     , scientific
     , text
