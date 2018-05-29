@@ -67,11 +67,9 @@ arbitrary' = scale (`div` 2) arbitrary
 instance Arbitrary Demand where
   arbitrary = (\b -> if b then Opt else Req) <$> arbitrary
 
--- #if !MIN_VERSION_QuickCheck(2,9,0)
--- instance Arbitrary a => Arbitrary (NonEmpty a) where
---   arbitrary = (:|) <$> arbitrary <*> arbitrary
---   shrink (x:|xs) = mapMaybe nonEmpty (shrinkList shrink (x:xs))
--- #endif
+instance Arbitrary a => Arbitrary (NonEmpty a) where
+  arbitrary = (:|) <$> arbitrary <*> arbitrary
+  shrink (x:|xs) = mapMaybe nonEmpty (shrinkList shrink (x:xs))
 
 instance Arbitrary Schema where
   arbitrary = frequency $
