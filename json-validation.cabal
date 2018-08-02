@@ -52,7 +52,7 @@ test-suite doctest
       aeson
     , base
     , containers
-    , doctest ^>= 0.11 || ^>= 0.12 || ^>= 0.13
+    , doctest ^>= 0.11 || ^>= 0.12 || ^>= 0.13 || ^>= 0.14 || ^>= 0.15 || ^>= 0.16
     , hashable
     , iso8601-time
     , json-validation
