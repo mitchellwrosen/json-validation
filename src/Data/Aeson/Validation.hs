@@ -95,9 +95,12 @@ newtype FieldMap
   = FieldMap
       { unFieldMap :: HashMap (Pair Demand Text) (Pair FieldMap [Schema]) }
 
+instance Semigroup FieldMap where
+  (FieldMap x) <> (FieldMap y) = FieldMap (x <> y)
+
 instance Monoid FieldMap where
   mempty = FieldMap mempty
-  mappend (FieldMap x) (FieldMap y) = FieldMap (mappend x y)
+  mappend = (<>)
 
 data Pair a b
   = Pair !a !b
