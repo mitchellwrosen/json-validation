@@ -1,22 +1,32 @@
-{-# language LambdaCase #-}
+-- | Mutually recursive types.
 
-module Data.Aeson.Validation.Internal where
+module Data.Aeson.Validation.Internal.Types where
 
-import Control.Applicative ((<$>))
-import Data.Bits (xor)
-import Data.Hashable (Hashable(..))
-import Data.List.NonEmpty (NonEmpty(..), (<|))
-import Data.Scientific
-import Data.Semigroup
-import Data.Text (Text)
-import Lens.Micro
+import Data.Aeson.Validation.Internal.Prelude
 
-import qualified Data.List.NonEmpty as NonEmpty
+import Data.List.NonEmpty ((<|))
+
 import qualified GHC.Exts as GHC
 
--- $setup
--- >>> import Data.Aeson (Value(..))
--- >>> import Data.Aeson.Validation
+
+data Demand
+  = Opt
+  | Req
+  deriving Eq
+
+instance Hashable Demand where
+  hash Opt = 0
+  hash Req = 1
+
+  -- Stolen from @hashable@
+  hashWithSalt s x = s * 16777619 `xor` hash x
+
+-- | An opaque object 'Field'.
+--
+-- Create a 'Field' with '.:' or '.:?', and bundle it into a 'Schema' using
+-- 'object' or 'object''
+data Field
+  = Field !Demand !(NonEmpty Text) !Schema
 
 -- | An opaque JSON 'Schema'.
 data Schema
@@ -141,33 +151,12 @@ instance Semigroup Schema where
 instance GHC.IsString Schema where
   fromString = STheString . GHC.fromString
 
-data Demand
-  = Opt
-  | Req
-  deriving Eq
-
-instance Hashable Demand where
-  hash Opt = 0
-  hash Req = 1
-
-  -- Stolen from @hashable@
-  hashWithSalt s x = s * 16777619 `xor` hash x
-
--- | An opaque object 'Field'.
---
--- Create a 'Field' with '.:' or '.:?', and bundle it into a 'Schema' using
--- 'object' or 'object''
-data Field
-  = Field !Demand !(NonEmpty Text) !Schema
-
-data ShallowField = ShallowField
+data ShallowField
+  = ShallowField
   { fieldDemand :: !Demand
-  , fieldKey    :: !Text
+  , fieldKey :: !Text
   , fieldSchema :: !Schema
   }
-
-fieldSchemaL :: Lens' ShallowField Schema
-fieldSchemaL f (ShallowField a b c) = (\c' -> ShallowField a b c') <$> f c
 
 -- Are extra properties of an object allowed?
 data Strict
@@ -179,66 +168,3 @@ data Unique
   = Unique
   | NotUnique
   deriving Eq
-
-normalize :: Schema -> Schema
-normalize = transform
-  (\case
-    SAlts ss ->
-      SAlts (NonEmpty.fromList (NonEmpty.toList ss >>= unAlt))
-    s -> s)
- where
-  -- Rip off top-level SAlts constructor
-  unAlt :: Schema -> [Schema]
-  unAlt (SAlts ss) = NonEmpty.toList ss
-  unAlt s = [s]
-
--- Uniplate stuff, not enough to be worth the dependency
-
-universe :: Schema -> [Schema]
-universe = \case
-  SBool               -> [SBool]
-  STrue               -> [STrue]
-  SFalse              -> [SFalse]
-  SNumber             -> [SNumber]
-  SInteger            -> [SInteger]
-  STheNumber  a       -> [STheNumber a]
-  STheInteger a       -> [STheInteger a]
-  SSomeNumber a b     -> [SSomeNumber a b]
-  SString             -> [SString]
-  STheString  a       -> [STheString a]
-  SSomeString a b     -> [SSomeString a b]
-  SDateTime           -> [SDateTime]
-  SObject     a b     -> SObject a b : concatMap universe (map fieldSchema b)
-  SArray      a b c d -> SArray a b c d : universe d
-  STuple      a       -> STuple a : concatMap universe a
-  SAnything           -> [SAnything]
-  SNullable   a       -> SNullable a : universe a
-  SAlts       a       -> SAlts a : concatMap universe (NonEmpty.toList a)
-  SNegate     a       -> SNegate a : universe a
-
--- Transform all 'Schema', bottom up.
-transform :: (Schema -> Schema) -> Schema -> Schema
-transform f = f . transform' (transform f)
-
--- Transform direct children.
-transform' :: (Schema -> Schema) -> Schema -> Schema
-transform' f = \case
-  SBool               -> SBool
-  STrue               -> STrue
-  SFalse              -> SFalse
-  SNumber             -> SNumber
-  SInteger            -> SInteger
-  STheNumber  a       -> STheNumber a
-  STheInteger a       -> STheInteger a
-  SSomeNumber a b     -> SSomeNumber a b
-  SString             -> SString
-  STheString  a       -> STheString a
-  SSomeString a b     -> SSomeString a b
-  SDateTime           -> SDateTime
-  SObject     a b     -> SObject a (b & each.fieldSchemaL %~ f)
-  SArray      a b c d -> SArray a b c (f d)
-  STuple      a       -> STuple (map f a)
-  SAnything           -> SAnything
-  SNullable   a       -> SNullable (f a)
-  SAlts       a       -> SAlts (fmap f a)
-  SNegate     a       -> SNegate (f a)

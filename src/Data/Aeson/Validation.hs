@@ -50,7 +50,13 @@ module Data.Aeson.Validation
   , nullable
   ) where
 
-import Data.Aeson.Validation.Internal
+import Data.Aeson.Validation.Internal.Context
+import Data.Aeson.Validation.Internal.Demand
+import Data.Aeson.Validation.Internal.Field
+import Data.Aeson.Validation.Internal.FieldMap
+import Data.Aeson.Validation.Internal.Pair
+import Data.Aeson.Validation.Internal.Schema
+import Data.Aeson.Validation.Internal.ShallowField
 
 import Control.Applicative
 import Control.Monad ((>=>))
@@ -85,34 +91,6 @@ import qualified Text.Regex.PCRE.Light as Regex
 -- >>> import Data.List.NonEmpty (NonEmpty((:|)))
 -- >>> import Test.QuickCheck.Instances ()
 -- >>> import qualified Data.Text as Text
-
---------------------------------------------------------------------------------
--- Types
-
--- A FieldMap is a temporary data structure used during the conversion from
--- [Field] to [ShallowField].
-newtype FieldMap
-  = FieldMap
-      { unFieldMap :: HashMap (Pair Demand Text) (Pair FieldMap [Schema]) }
-
-instance Semigroup FieldMap where
-  (FieldMap x) <> (FieldMap y) = FieldMap (x <> y)
-
-instance Monoid FieldMap where
-  mempty = FieldMap mempty
-  mappend = (<>)
-
-data Pair a b
-  = Pair !a !b
-  deriving (Eq, Generic)
-
-instance (Hashable a, Hashable b) => Hashable (Pair a b)
-
--- Breadcrumbs into a JSON object in reverse order.
-data Context
-  = Empty
-  | Property !Text Context
-  | Index !Int Context
 
 --------------------------------------------------------------------------------
 -- Schemas
@@ -191,277 +169,41 @@ class A schema where
   someString :: (Text -> Bool) -> schema
 
 instance A Schema where
-  someNumber p = SSomeNumber p Nothing
+  someNumber p =
+    SSomeNumber p Nothing
 
-  someInteger p = SSomeNumber (either nope p . floatingOrInteger) Nothing
-   where
-    nope :: Double -> Bool
-    nope _ = False
+  someInteger p =
+    SSomeNumber (either nope p . floatingOrInteger) Nothing
+    where
+      nope :: Double -> Bool
+      nope _ = False
 
-  someString p = SSomeString p Nothing
+  someString p =
+    SSomeString p Nothing
 
 instance (a ~ Text) => A (a -> Schema) where
-  someNumber p s = SSomeNumber p (Just s)
+  someNumber p s =
+    SSomeNumber p (Just s)
 
   someInteger p s =
     SSomeNumber (either nope p . floatingOrInteger) (Just s)
-   where
-    nope :: Double -> Bool
-    nope _ = False
+    where
+      nope :: Double -> Bool
+      nope _ = False
 
-  someString p s = SSomeString p (Just s)
-
--- | Any 'Data.Aeson.Types.Bool'.
---
--- ==== __Examples__
---
--- >>> schema bool (Bool True)
--- True
---
--- >>> schema bool (Bool False)
--- True
-bool :: Schema
-bool = SBool
-
--- | 'Data.Aeson.Types.Bool' 'True'.
---
--- ==== __Examples__
---
--- >>> schema true (Bool True)
--- True
---
--- >>> schema true (Bool False)
--- False
-true :: Schema
-true = STrue
-
--- | 'Data.Aeson.Types.Bool' 'False'.
---
--- ==== __Examples__
---
--- >>> schema false (Bool True)
--- False
---
--- >>> schema false (Bool False)
--- True
-false :: Schema
-false = SFalse
-
--- | Any 'Number'.
---
--- ==== __Examples__
---
--- >>> schema number (Number 1.0)
--- True
-number :: Schema
-number = SNumber
-
--- | An /approximate/ 'Data.Aeson.Types.Number', with a relative tolerance of
--- @1^-9@ (the smaller number must be within @0.0000001%@ of the larger number).
---
--- You may use a floating point literal instead.
---
--- Here is how you'd implement 'theNumber' using 'someNumber', in case you want
--- to use a different tolerance:
---
--- @
--- 'theNumber' :: 'Scientific' -> 'Schema'
--- 'theNumber' n = 'someNumber' (isClose n)
---   where
---     isClose :: 'Scientific' -> 'Scientific' -> 'Bool'
---     isClose a b = 'abs' (a-b) '<=' 1e-9 * 'max' ('abs' a) ('abs' b)
--- @
---
--- ==== __Examples__
---
--- >>> schema (theNumber 1.5) (Number 1.5)
--- True
---
--- >>> schema 2.5 (Number 2.500000001)
--- True
-theNumber :: Scientific -> Schema
-theNumber = STheNumber
-
--- | Any integer 'Number'.
---
--- ==== __Examples__
---
--- >>> schema integer (Number 1.0)
--- True
---
--- >>> schema integer (Number 1.5)
--- False
-integer :: Schema
-integer = SInteger
-
--- | An exact integer 'Data.Aeson.Types.Number'.
---
--- You may use an integer literal instead.
---
--- ==== __Examples__
---
--- >>> schema (theInteger 1) (Number 1)
--- True
---
--- >>> schema 1 (Number 2)
--- False
-theInteger :: Integer -> Schema
-theInteger = STheInteger
-
--- | Any 'Data.Aeson.Types.String'.
---
--- ==== __Examples__
---
--- >>> schema string (String "foo")
--- True
-string :: Schema
-string = SString
-
--- | An exact 'Data.Aeson.Types.String'.
---
--- You may use a string literal instead (requires @-XOverloadedStrings@).
---
--- ==== __Examples__
---
--- >>> schema (theString "foo") (String "foo")
--- True
---
--- >>> schema "foo" (String "bar")
--- False
-theString :: Text -> Schema
-theString = STheString
-
--- | A 'Data.Aeson.Types.String' that matches a regular expression.
---
--- ==== __Examples__
---
--- >>> schema (regex "a+b") (String "xaaabx")
--- True
---
--- >>> schema (regex "c{2}") (String "cd")
--- False
-regex :: Text -> Schema
-regex r = SSomeString p (Just ("matches " <> r))
- where
-  p :: Text -> Bool
-  p s = has (_Just . _head) (Regex.match r' (encodeUtf8 s) [])
-
-  r' :: Regex
-  r' = Regex.compile (encodeUtf8 r) [Regex.utf8]
-
--- | A 'Data.Aeson.Types.String' in
--- <https://www.ietf.org/rfc/rfc3339.txt ISO 8601> format.
---
--- ==== __Examples__
--- >>> schema datetime (String "2000-01-01T00:00:00.000Z")
--- True
-datetime :: Schema
-datetime = SDateTime
-
--- | An 'Object', possibly with additional fields.
---
--- To match any 'Object', use @'object' []@.
---
--- ==== __Examples__
---
--- >>> let fields = [("foo":|[]) .: number]
--- >>> let values = ["foo" .= Number 1, "bar" .= Bool True]
--- >>> schema (object fields) (Object values)
--- True
---
--- >>> let fields = [("foo":|["bar"]) .: number]
--- >>> let values = ["foo" .= Object ["bar" .= Number 1]]
--- >>> schema (object fields) (Object values)
--- True
-object :: [Field] -> Schema
-object xs = SObject NotStrict (flatten NotStrict xs)
-
--- | An 'Object' with no additional fields.
---
--- The @'@ mark means \"strict\" as in @foldl'@, because 'object'' matches
--- 'Object's more strictly than 'object'.
---
--- ==== __Examples__
---
--- >>> let fields = [("foo":|[]) .: number]
--- >>> let values = ["foo" .= Number 1]
--- >>> schema (object' fields) (Object values)
--- True
---
--- >>> let fields = [("foo":|[]) .: number]
--- >>> let values = ["foo" .= Number 1, "bar" .= Bool True]
--- >>> schema (object' fields) (Object values)
--- False
---
--- >>> let fields = [("foo":|["bar"]) .: number]
--- >>> let values = ["foo" .= Object ["bar" .= Number 1]]
--- >>> schema (object' fields) (Object values)
--- True
---
--- >>> let fields = [("foo":|["bar"]) .: number]
--- >>> let values = ["foo" .= Object ["bar" .= Number 1], "baz" .= Bool True]
--- >>> schema (object' fields) (Object values)
--- False
-object' :: [Field] -> Schema
-object' xs = SObject Strict (flatten Strict xs)
-
-flatten :: Strict -> [Field] -> [ShallowField]
-flatten s xs = mapFields (foldr step mempty xs)
- where
-  step
-    :: Field
-    -> HashMap (Pair Demand Text) (Pair FieldMap [Schema])
-    -> HashMap (Pair Demand Text) (Pair FieldMap [Schema])
-  step (Field req path sch) = go (NonEmpty.toList path)
-   where
-    go :: [Text]
-       -> HashMap (Pair Demand Text) (Pair FieldMap [Schema])
-       -> HashMap (Pair Demand Text) (Pair FieldMap [Schema])
-    go = \case
-      [key] ->
-        HashMap.alter
-          (\case
-            Nothing -> Just (Pair mempty [sch])
-            Just (Pair m schs) -> Just (Pair m (sch : schs)))
-          (Pair req key)
-      key:path' ->
-        HashMap.alter
-          (\case
-            Nothing -> val mempty []
-            Just (Pair m schs) -> val m schs)
-          (Pair req key)
-       where
-        val :: FieldMap -> [Schema] -> Maybe (Pair FieldMap [Schema])
-        val m ss = Just (Pair (FieldMap (go path' (unFieldMap m))) ss)
-
-  mapFields
-    :: HashMap (Pair Demand Text) (Pair FieldMap [Schema]) -> [ShallowField]
-  mapFields = HashMap.toList >=> go
-   where
-    go :: (Pair Demand Text, Pair FieldMap [Schema]) -> [ShallowField]
-    go (Pair req key, Pair m ss) =
-      case mapFields (unFieldMap m) of
-        [] -> fields
-        fs -> objField fs : fields
-     where
-      fields :: [ShallowField]
-      fields = map (ShallowField req key) ss
-
-      objField :: [ShallowField] -> ShallowField
-      objField fs = ShallowField
-        { fieldDemand = req
-        , fieldKey    = key
-        , fieldSchema = SObject s fs
-        }
+  someString p s =
+    SSomeString p (Just s)
 
 -- | A required 'Field'.
 (.:) :: NonEmpty Text -> Schema -> Field
-(.:) = Field Req
+(.:) =
+  Field Req
 infixr 5 .:
 
 -- | An optional 'Field'.
 (.:?) :: NonEmpty Text -> Schema -> Field
-(.:?) = Field Opt
+(.:?) =
+  Field Opt
 infixr 5 .:?
 
 -- | A "homogenous" 'Array' of any size.
@@ -481,7 +223,8 @@ infixr 5 .:?
 -- >>> schema (array integer) (Array [Number 1.5])
 -- False
 array :: Schema -> Schema
-array = SArray NotUnique minBound maxBound
+array =
+  SArray NotUnique minBound maxBound
 
 -- | A sized (inclusive), "homogenous" (see note above) 'Array'. Use 'minBound'
 -- or 'maxBound' for an unbounded edge.
@@ -494,7 +237,8 @@ array = SArray NotUnique minBound maxBound
 -- >>> schema (sizedArray 1 2 bool) (Array [Bool True, Bool True, Bool False])
 -- False
 sizedArray :: Int -> Int -> Schema -> Schema
-sizedArray = SArray NotUnique
+sizedArray =
+  SArray NotUnique
 
 -- | A "homogenous" (see note above), unique 'Array' of any size.
 --
@@ -506,7 +250,8 @@ sizedArray = SArray NotUnique
 -- >>> schema (set bool) (Array [Bool True, Bool True])
 -- False
 set :: Schema -> Schema
-set = SArray Unique minBound maxBound
+set =
+  SArray Unique minBound maxBound
 
 -- | A sized (inclusive), "homogenous" (see note above), unique 'Array'. Use
 -- 'minBound' or 'maxBound' for an unbounded edge.
@@ -519,7 +264,8 @@ set = SArray Unique minBound maxBound
 -- >>> schema (sizedSet 1 1 string) (Array [String "foo", String "bar"])
 -- False
 sizedSet :: Int -> Int -> Schema -> Schema
-sizedSet = SArray Unique
+sizedSet =
+  SArray Unique
 
 -- | A heterogeneous 'Array' exactly as long as the given list of 'Schema's.
 --
@@ -528,7 +274,8 @@ sizedSet = SArray Unique
 -- >>> schema (tuple [bool, string]) (Array [Bool True, String "foo"])
 -- True
 tuple :: [Schema] -> Schema
-tuple = STuple
+tuple =
+  STuple
 
 -- | Any 'Value' whatsoever, including 'Null'.
 --
@@ -540,7 +287,8 @@ tuple = STuple
 -- >>> schema anything Null
 -- True
 anything :: Schema
-anything = SAnything
+anything =
+  SAnything
 
 -- | Modify a 'Schema' to additionally accept 'Null'.
 --
@@ -558,7 +306,8 @@ anything = SAnything
 -- >>> schema (nullable bool) Null
 -- True
 nullable :: Schema -> Schema
-nullable = SNullable
+nullable =
+  SNullable
 
 --------------------------------------------------------------------------------
 -- Validation
@@ -569,7 +318,8 @@ nullable = SNullable
 -- 'schema' s v = 'null' ('validate' s v)
 -- @
 schema :: Schema -> Value -> Bool
-schema s v = null (validate s v)
+schema s v =
+  null (validate s v)
 
 -- | Validate a 'Value' with a 'Schema' and emit schema violations as 'Text'.
 validate :: Schema -> Value -> [Text]
@@ -577,7 +327,10 @@ validate s v =
   toList (runReader (validate_ (normalize s) v) Empty)
 
 validate_
-  :: (Applicative m, MonadReader Context m) => Schema -> Value -> m (Seq Text)
+  :: (Applicative m, MonadReader Context m)
+  => Schema
+  -> Value
+  -> m (Seq Text)
 validate_ = \case
   SBool           -> validateBool
   STrue           -> validateTrue
@@ -703,7 +456,7 @@ validateDateTime = \case
 
 validateObject
   :: (Applicative m, MonadReader Context m)
-  => Strict -> [ShallowField] -> Value -> m (Seq Text)
+  => Strict -> [ShallowField Schema] -> Value -> m (Seq Text)
 validateObject s xs = \case
   Object obj ->
     case s of
@@ -713,7 +466,7 @@ validateObject s xs = \case
 
 validateObject'
   :: (Applicative m, MonadReader Context m)
-  => [ShallowField] -> HashMap Text Value -> m (Seq Text)
+  => [ShallowField Schema] -> HashMap Text Value -> m (Seq Text)
 validateObject' [] obj =
   case HashMap.keys obj of
     [] -> pure mempty
@@ -724,7 +477,7 @@ validateObject' (x:xs) obj = (<>)
 
 validateField
   :: (Applicative m, MonadReader Context m)
-  => HashMap Text Value -> ShallowField -> m (Seq Text)
+  => HashMap Text Value -> ShallowField Schema -> m (Seq Text)
 validateField obj = \case
   ShallowField Req key s ->
     case HashMap.lookup key obj of
@@ -916,7 +669,7 @@ validateNotDateTime = \case
 
 validateNotObject
   :: (Applicative m, MonadReader Context m)
-  => Strict -> [ShallowField] -> Value -> m (Seq Text)
+  => Strict -> [ShallowField Schema] -> Value -> m (Seq Text)
 validateNotObject sch xs val = do
   errs <- validateObject sch xs val
   if null errs
