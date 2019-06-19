@@ -18,5 +18,5 @@ main = doctest
   , "-XOverloadedStrings"
   , "-XScopedTypeVariables"
   , "-XTypeFamilies"
-  , "src"
+  , "src/internal"
   ]

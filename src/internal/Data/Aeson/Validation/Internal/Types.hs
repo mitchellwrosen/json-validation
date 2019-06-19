@@ -9,6 +9,9 @@ import Data.List.NonEmpty ((<|))
 import qualified GHC.Exts as GHC
 
 
+-- $setup
+-- >>> import Data.Aeson.Validation.Internal.Schema
+
 data Demand
   = Opt
   | Req
@@ -37,10 +40,10 @@ data Schema
   | SInteger
   | STheNumber !Scientific
   | STheInteger !Integer
-  | SSomeNumber (Scientific -> Bool) !(Maybe Text) {- error msg -}
+  | SSomeNumber !Text {- error msg -} (Scientific -> Bool) {- predicate -}
   | SString
   | STheString !Text
-  | SSomeString (Text -> Bool) !(Maybe Text) {- error msg -}
+  | SSomeString !Text {- error msg -} (Text -> Bool) {- predicate -}
   | SDateTime
   | SObject !Strict ![ShallowField]
   | SArray !Unique !Int {- min len -} !Int {- max len -} !Schema
@@ -61,8 +64,8 @@ data Schema
 --
 --         Examples:
 --
---         >>> schema 1 (Number 1)
---         True
+--         >>> validate 1 (Number 1)
+--         []
 --
 --     (2) @'negate' s@ succeeds whenever @s@ fails.
 --
@@ -74,11 +77,11 @@ data Schema
 --
 --         Examples:
 --
---         >>> schema (negate bool) (Bool True)
---         False
+--         >>> validate (negate bool) (String "foo")
+--         []
 --
---         >>> schema (negate bool) (String "foo")
---         True
+--         >>> validate (negate bool) (Bool True)
+--         ["expected anything but a bool but found true"]
 instance Num Schema where
   (+)    = error "Data.Aeson.Validation: (+) not implemented for Schema"
   (-)    = error "Data.Aeson.Validation: (-) not implemented for Schema"
@@ -100,11 +103,11 @@ instance Num Schema where
 --
 --         Examples:
 --
---         >>> schema 1.5 (Number 1.5)
---         True
+--         >>> validate 1.5 (Number 1.5)
+--         []
 --
---         >>> schema 2.5 (Number 2.500000001)
---         True
+--         >>> validate 2.5 (Number 2.500000001)
+--         []
 instance Fractional Schema where
   (/)   = error "Data.Aeson.Validation: (/) not implemented for Schema"
   recip = error "Data.Aeson.Validation: recip not implemented for Schema"
@@ -114,10 +117,6 @@ instance Fractional Schema where
 -- | The '<>' operator is used to create a /sum/ 'Schema' that, when applied to
 -- a 'Value', first tries the left 'Schema', then falls back on the right one if
 -- the left one fails.
---
--- @
--- 'schema' (s1 '<>' s2) val = 'schema' s1 val '||' 'schema' s2 val
--- @
 --
 -- For 'validate', if any 'Schema's emits no violations, then no violations are
 -- emitted. Otherwise, all violations are emitted.
@@ -146,8 +145,8 @@ instance Semigroup Schema where
 --
 -- Examples:
 --
--- >>> schema "foo" (String "foo")
--- True
+-- >>> validate "foo" (String "foo")
+-- []
 instance GHC.IsString Schema where
   fromString = STheString . GHC.fromString
 

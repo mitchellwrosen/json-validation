@@ -1,6 +1,9 @@
 {-# LANGUAGE LambdaCase #-}
 
-module Data.Aeson.Validation.Internal.Field where
+module Data.Aeson.Validation.Internal.Field
+  ( Field
+  , flatten
+  ) where
 
 import Data.Aeson.Validation.Internal.Pair
 import Data.Aeson.Validation.Internal.Prelude
